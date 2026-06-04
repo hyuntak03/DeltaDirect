@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Which Way Did It Move? — Diagnosing Directional Motion Blindness in Video-LLMs</title>
+<meta name="description" content="MoDirect & DeltaDirect — diagnosing and overcoming directional motion blindness in Video-LLMs." />
+<meta property="og:title" content="Which Way Did It Move?" />
+<meta property="og:description" content="Diagnosing and overcoming directional motion blindness in Video-LLMs." />
+<meta property="og:image" content="./static/images/teaser.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500;1,6..72,600;1,6..72,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<link rel="stylesheet" href="./static/css/index.css">
+</head>
+
+<body>
+
+<div class="scroll-progress" id="scrollProgress"></div>
+
+<!-- ================ NAV ================ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner container">
+    <a href="#top" class="brand">
+      <span class="brand-mark">DD</span>
+      <span class="brand-stack">
+        <span class="brand-text">DeltaDirect</span>
+        <span class="brand-lab">KHU&nbsp;VLL · MoDirect</span>
+      </span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#demo">Problem</a></li>
+      <li><a href="#abstract">Abstract</a></li>
+      <li><a href="#diagnose">Diagnosis</a></li>
+      <li><a href="#method">Method</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#cite">Citation</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ================ HERO ================ -->
+<header id="top" class="hero">
+  <div class="container">
+    <div class="hero-meta">
+      <a class="lab-chip" href="https://github.com/KHU-VLL" target="_blank" rel="noopener">
+        <span class="lab-dot"></span>
+        KHU&nbsp;VLL · Visual Language Lab
+      </a>
+      <span class="hero-eyebrow">Preprint · 2026</span>
+    </div>
+
+    <h1 class="hero-title">
+      Which Way Did It Move?<br/>
+      <span class="title-sub">Diagnosing and Overcoming Directional Motion Blindness in Video-LLMs</span>
+    </h1>
+
+    <div class="authors">
+      <span class="author">Jongseo Lee<sup>1</sup></span>
+      <span class="author">Hyuntak Lee<sup>1</sup></span>
+      <span class="author">Sunghun Kim<sup>1</sup></span>
+      <span class="author">Sooa Kim<sup>1</sup></span>
+      <span class="author">Jihoon Chung<sup>2</sup></span>
+      <span class="author">Jinwoo Choi<sup>1,</sup><sup>†</sup></span>
+    </div>
+    <div class="affil">
+      <span><sup>1</sup>Kyung Hee University</span>
+      <span class="sep">·</span>
+      <span><sup>2</sup>Princeton University</span>
+      <span class="sep">·</span>
+      <span><sup>†</sup>Corresponding author</span>
+    </div>
+
+    <div class="hero-links">
+      <a class="link-btn" href="https://arxiv.org/abs/2605.22823" target="_blank" rel="noopener">
+        <i class="ai ai-arxiv"></i><span>arXiv</span>
+      </a>
+      <a class="link-btn" href="https://github.com/KHU-VLL/DeltaDirect" target="_blank" rel="noopener">
+        <i class="fab fa-github"></i><span>Code</span>
+      </a>
+      <a class="link-btn" href="#cite">
+        <i class="fas fa-quote-right"></i><span>Citation</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ================ DEMO ================ -->
+<section class="section" id="demo">
+  <div class="container">
+    <h2 class="section-title">Try it &mdash; same clip, two questions</h2>
+    <p class="section-desc">
+      A colored object drifts across the frame in one direction. We ask the Video-LLM
+      <em>two questions about the same clip</em>: one about <em>color</em>, one about
+      <em>direction</em>. State-of-the-art models nail the color but collapse on the direction.
+      We call this failure mode <b>directional motion blindness</b>.
+    </p>
+
+    <div class="vdemo reveal">
+      <div class="vdemo-stage">
+        <div class="vdemo-screen">
+          <div class="vdemo-grid" aria-hidden="true"></div>
+          <svg class="vdemo-trail" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="trailGrad" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stop-color="#fbbf24" stop-opacity="0"/>
+                <stop offset="1" stop-color="#f59e0b" stop-opacity="0.7"/>
+              </linearGradient>
+            </defs>
+            <path id="vdemoTrail" d="" fill="none" stroke="url(#trailGrad)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <div class="vdemo-ball" id="vdemoBall" aria-hidden="true"></div>
+          <span class="vdemo-gt"><i class="fas fa-circle-dot"></i> Ground truth &middot; <b id="vdemoGT">Rightward</b></span>
+        </div>
+        <div class="dir-pills" role="tablist" aria-label="Motion direction">
+          <button class="dir-pill active" data-dir="right" aria-label="Right"><i class="fas fa-arrow-right"></i><span>Right</span></button>
+          <button class="dir-pill"        data-dir="left"  aria-label="Left"><i class="fas fa-arrow-left"></i><span>Left</span></button>
+          <button class="dir-pill"        data-dir="up"    aria-label="Up"><i class="fas fa-arrow-up"></i><span>Up</span></button>
+          <button class="dir-pill"        data-dir="down"  aria-label="Down"><i class="fas fa-arrow-down"></i><span>Down</span></button>
+        </div>
+      </div>
+
+      <div class="vdemo-panel">
+        <!-- Always-visible: two questions to anchor the "try it" experiment -->
+        <div class="vdemo-qlist">
+          <div class="vdemo-q-line color-q">
+            <span class="vdemo-q-pin"><i class="fas fa-circle"></i></span>
+            <span class="vdemo-q-num">Q1</span>
+            <span class="vdemo-q-text">&ldquo;What color is the moving object?&rdquo;</span>
+          </div>
+          <div class="vdemo-q-line dir-q">
+            <span class="vdemo-q-pin"><i class="fas fa-circle"></i></span>
+            <span class="vdemo-q-num">Q2</span>
+            <span class="vdemo-q-text">&ldquo;Which way is the object moving?&rdquo;</span>
+          </div>
+        </div>
+
+        <!-- The CTA — clicking reveals benchmark accuracy -->
+        <button class="vdemo-reveal-btn" id="vdemoReveal" type="button" aria-expanded="false" aria-controls="vdemoBarsBlock">
+          <span class="vdemo-reveal-icon" aria-hidden="true"><i class="fas fa-play"></i></span>
+          <span class="vdemo-reveal-text">See how Video-LLMs perform</span>
+          <span class="vdemo-reveal-hint">click to reveal</span>
+        </button>
+
+        <!-- Bars block — hidden until the user reveals -->
+        <div class="vdemo-bars-block" id="vdemoBarsBlock" data-revealed="false" aria-hidden="true">
+          <div class="vdemo-legend">
+            <span class="vdemo-leg-item">
+              <span class="vdemo-leg-swatch sw-color"></span>
+              <span class="vdemo-leg-text">Color</span>
+            </span>
+            <span class="vdemo-leg-item">
+              <span class="vdemo-leg-swatch sw-dir"></span>
+              <span class="vdemo-leg-text">Motion direction</span>
+            </span>
+            <span class="vdemo-leg-axis">Top-1 acc. &middot; 0&ndash;100%</span>
+          </div>
+
+          <div class="vdemo-bars" id="vdemoBars">
+            <div class="vdemo-row">
+              <span class="vdemo-name">LLaVA-Video-7B</span>
+              <span class="vdemo-bar">
+                <span class="fill-color" data-w="93"></span>
+                <span class="fill-dir"   data-w="25.9"></span>
+              </span>
+            </div>
+            <div class="vdemo-row">
+              <span class="vdemo-name">GPT-4o</span>
+              <span class="vdemo-bar">
+                <span class="fill-color" data-w="96"></span>
+                <span class="fill-dir"   data-w="43.3"></span>
+              </span>
+            </div>
+            <div class="vdemo-row">
+              <span class="vdemo-name">Qwen3-VL-4B</span>
+              <span class="vdemo-bar">
+                <span class="fill-color" data-w="95"></span>
+                <span class="fill-dir"   data-w="49.7"></span>
+              </span>
+            </div>
+            <div class="vdemo-row ours">
+              <span class="vdemo-name">LLaVA-Video-7B + <b>DeltaDirect</b></span>
+              <span class="vdemo-bar">
+                <span class="fill-color" data-w="93"></span>
+                <span class="fill-dir strong" data-w="85.4"></span>
+              </span>
+            </div>
+          </div>
+
+          <p class="vdemo-foot">
+            Direction-QA top-1 accuracy on M<small>O</small>D<small>IRECT</small>-S<small>YN</small>B<small>ENCH</small>
+            (Avg. across P-Syn / C-Syn / P-Real / C-Real).
+            Color bars are visual approximations from the paper's teaser.
+            Full per-domain numbers in <a href="#results">Results</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================ ABSTRACT ================ -->
+<section class="section section-soft" id="abstract">
+  <div class="container narrow">
+    <h2 class="section-title">Abstract</h2>
+    <p class="lead">
+      Recent Video-LLMs achieve strong results on a wide range of video tasks, yet our analysis reveals a
+      surprisingly fundamental failure mode: <b>directional motion blindness</b>. Given a clip of a colored
+      object moving across the frame, state-of-the-art models can answer <em>"what color?"</em> reliably but
+      collapse to chance on <em>"which way is it moving?"</em>. Through linear probes and a logit-lens
+      analysis we show that the direction signal is faithfully <em>encoded</em> at every layer; it simply
+      fails to <em>bind</em> into the answer &mdash; a phenomenon we term the <b>direction binding gap</b>.
+      We introduce <b>MoDirect-Inst</b>, a controlled instruction-tuning corpus, and <b>DeltaDirect</b>, a
+      parameter-efficient motion-change head that pulls direction through the vision-language interface
+      during training and leaves the inference pipeline untouched. DeltaDirect raises LLaVA-Video-7B from
+      27.6% to <b>85.4%</b> on real-world direction QA.
+    </p>
+
+    <div class="tldr reveal">
+      <span class="tldr-label">TL;DR</span>
+      <p>
+        Video-LLMs already <mark>see</mark> motion direction in their internal representations &mdash; they
+        just don't <mark>say</mark> it. DeltaDirect adds a small auxiliary motion head during training so
+        that the VL interface lets the direction signal through.
+      </p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================ DIAGNOSE ================ -->
+<section class="section" id="diagnose">
+  <div class="container">
+    <h2 class="section-title">Diagnosis</h2>
+    <p class="section-desc">
+      What's broken inside a Video-LLM that makes direction unanswerable? We trace
+      it in three steps: rule out the obvious, follow the signal through the
+      network, then ask what training can &mdash; and cannot &mdash; fix.
+    </p>
+
+    <!-- ===== Chapter 1 ===== -->
+    <article class="chapter reveal">
+      <header class="chapter-head">
+        <span class="chapter-no">01</span>
+        <h3>Two easy explanations &mdash; both fail.</h3>
+        <p class="chapter-lead">
+          Before opening the model, we test the obvious external hypotheses: maybe
+          direction-supervised data is too rare, or maybe the prompt simply isn't
+          <em>asking</em> the right way. Neither moves the needle.
+        </p>
+      </header>
+      <div class="chapter-stats">
+        <div class="mini-stat">
+          <div class="mini-num">0.91<small>%</small></div>
+          <p>
+            <b>Hypothesis 1: data is missing.</b><br/>
+            Only 0.91% of LLaVA-Video-178K is direction-related &mdash; after
+            keyword + semantic filtering, and human verification confirms this
+            as an <em>upper bound</em>. Supervision <em>is</em> scarce, but
+            scarcity alone tells us nothing about <em>where</em> in the model
+            the failure sits.
+          </p>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-num warn">+7.1<small>pp</small></div>
+          <p>
+            <b>Hypothesis 2: the prompt is wrong.</b><br/>
+            Best lift on P-Syn from <em>any</em> combination of input-side
+            scaffolds &mdash; visual boundary cues, step-by-step location
+            reasoning, and coordinate-grid prompts. Vanilla
+            <b>27.6%</b> &rarr; scaffolded <b>34.7%</b>, still hovering at the
+            25% chance line. Prompting cannot close the gap.
+          </p>
+        </div>
+      </div>
+      <p class="chapter-foot">
+        Neither lever moves the needle. The cause must be representational
+        &mdash; so we open the model.
+      </p>
+    </article>
+
+    <!-- ===== Chapter 2 ===== -->
+    <article class="chapter reveal">
+      <header class="chapter-head">
+        <span class="chapter-no">02</span>
+        <h3>The signal survives every layer &mdash; the readout just won't bind it.</h3>
+        <p class="chapter-lead">
+          Linear probes at every stage of the pipeline. A logit-lens style readout test at the end.
+        </p>
+      </header>
+
+      <figure class="figure-block reveal">
+        <img src="./static/images/pipeline.png" alt="Probe accuracy across the pipeline"/>
+      </figure>
+
+      <!-- The pipeline's punchline + definition -->
+      <div class="headline-stat reveal">
+        <div class="hs-side hs-good">
+          <span class="hs-tag">Direction probe &middot; final readout</span>
+          <span class="hs-num">95.3<small>%</small></span>
+          <span class="hs-note">The signal <em>is</em> at the readout.</span>
+        </div>
+        <div class="hs-arrow" aria-hidden="true">
+          <span>but <em class="hs-break">doesn't bind</em> to</span>
+          <svg viewBox="0 0 80 24" width="100" height="22"><path d="M2 12 L74 12 M62 4 L74 12 L62 20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="hs-side hs-bad">
+          <span class="hs-tag">Direction-QA (MCQ)</span>
+          <span class="hs-num">27.6<small>%</small></span>
+          <span class="hs-note">The LM head returns the right letter only at chance.</span>
+        </div>
+        <p class="hs-foot">
+          Decoded, not bound &mdash; the <b>Direction Binding Gap</b>.
+        </p>
+      </div>
+
+      <div class="fig-side reveal">
+        <figure class="figure-block">
+          <img src="./static/images/figure_3.png" alt="Binding gap across nine Video-LLMs"/>
+        </figure>
+        <div class="fig-side-text">
+          <h4>The gap is universal.</h4>
+          <p>
+            The same probe&ndash;QA divergence appears in <em>every</em> Video-LLM we tested
+            &mdash; nine open-source models across architectures and scales. High linear-probe
+            accuracy (green) coexists with low direction-QA accuracy (red), and the binding gap
+            (yellow) is uniformly wide.
+          </p>
+          <p class="fig-side-aside">
+            A shared <em>structural</em> limitation of how Video-LLMs route motion-direction
+            evidence into language, not a model-specific artifact.
+          </p>
+        </div>
+      </div>
+    </article>
+
+    <!-- ===== Chapter 3 ===== -->
+    <article class="chapter reveal">
+      <header class="chapter-head">
+        <span class="chapter-no">03</span>
+        <h3>Tuning closes it &mdash; but only on the source domain. Magnitude is the lever.</h3>
+        <p class="chapter-lead">
+          Direction instruction tuning installs a source-domain binding pathway. It transfers an
+          <em>orientation</em> across domains but not the <em>amplitude</em> needed to read it out.
+        </p>
+      </header>
+
+      <!-- Mini reference: what the 4 SynBench domains actually look like -->
+      <div class="domain-ref reveal">
+        <div class="domain-ref-grid">
+          <figure class="domain-cell cell-psyn source">
+            <video class="domain-video" src="./static/videos/domains/P-Syn.mp4" autoplay loop muted playsinline></video>
+            <span class="cell-name">P-Syn</span>
+            <span class="cell-tag src">train</span>
+          </figure>
+          <figure class="domain-cell cell-preal">
+            <video class="domain-video" src="./static/videos/domains/P-Real.mp4" autoplay loop muted playsinline></video>
+            <span class="cell-name">P-Real</span>
+            <span class="cell-tag ood">ood</span>
+          </figure>
+          <figure class="domain-cell cell-csyn">
+            <video class="domain-video" src="./static/videos/domains/C-Syn.mp4" autoplay loop muted playsinline></video>
+            <span class="cell-name">C-Syn</span>
+            <span class="cell-tag ood">ood</span>
+          </figure>
+          <figure class="domain-cell cell-creal">
+            <video class="domain-video" src="./static/videos/domains/C-Real.mp4" autoplay loop muted playsinline></video>
+            <span class="cell-name">C-Real</span>
+            <span class="cell-tag hard">hardest</span>
+          </figure>
+        </div>
+
+        <div class="domain-ref-text">
+          <p>
+            <b>P</b> · primitive shape &nbsp;/&nbsp; <b>C</b> · cutout of a real object<br/>
+            <b>Syn</b> · synthetic background &nbsp;/&nbsp; <b>Real</b> · real-world place
+          </p>
+          <p>
+            Direction-supervised tuning data covers only <b>P-Syn</b>.
+            Everything else is out-of-distribution &mdash; and that's where
+            the binding gap reopens.
+          </p>
+        </div>
+      </div>
+
+      <div class="fig-side reveal">
+        <figure class="figure-block">
+          <img src="./static/images/figure_4.png" alt="Logit-lens analysis on Primitive-on-Syn"/>
+        </figure>
+        <div class="fig-side-text">
+          <h4>A binding pathway emerges on the trained domain.</h4>
+          <p>
+            Logit lens on LLaVA-Video, Primitive-on-Syn. <em>Before</em> tuning, the lens (- -)
+            stays at chance while the probe (—) is high &mdash; the model knows but doesn't say.
+            <em>After</em> MoDirect-Inst tuning, the lens climbs in late layers and converges
+            with the probe.
+          </p>
+          <p class="fig-side-stat">
+            MCQ accuracy: <span class="warn">27.6%</span> &nbsp;→&nbsp; <span class="ok">99.5%</span>
+          </p>
+          <p class="fig-side-aside">
+            The readout is now <em>reading out</em> direction, not just encoding it. But this
+            binding does not generalize as visual complexity rises.
+          </p>
+        </div>
+      </div>
+
+      <figure class="figure-block wide reveal">
+        <img src="./static/images/fig5_magnitude.png" alt="(a) OOD binding gap reopens, (b) concept-vector orientations align across domains, (c) magnitudes shrink under visual complexity"/>
+      </figure>
+      <p class="fig-readout reveal">
+        We analyze direction concept-vectors at the readout state via
+        <em>difference-in-means</em>, decomposing each into a unit
+        <em>orientation</em> and a <em>magnitude</em>.
+        <b>(a)</b> The source-domain gap closes to 0.3 pp but reopens to
+        12.1 pp on Cutout-on-Real.
+        <b>(b)</b> Direction-axis orientations align across domains in late
+        layers (cos &gt; 0.9).
+        <b>(c)</b> Yet their magnitudes shrink with visual complexity &mdash;
+        the magnitude deficit behind the OOD binding gap.
+      </p>
+
+      <p class="chapter-body reveal">
+        We test this directly: <b>rescale each OOD readout's magnitude to the
+        source-domain (P-Syn) level</b> &mdash; orientation untouched, no extra
+        training.
+      </p>
+
+      <div class="mag-demo reveal" id="magDemo">
+        <div class="mag-causal">
+          <span class="mag-causal-label">intervention</span>
+          <div class="mag-causal-knob">
+            <span class="knob-end">OOD magnitude</span>
+            <span class="knob-track"><span class="knob-fill" id="knobFill"></span></span>
+            <span class="knob-end">P-Syn magnitude</span>
+          </div>
+          <span class="mag-causal-arrow"><i class="fas fa-arrow-right"></i></span>
+          <span class="mag-causal-label out">outcome</span>
+        </div>
+
+        <div class="mag-bars">
+          <div class="mag-row">
+            <span class="mag-label">Vanilla LLaVA-Video-7B</span>
+            <span class="mag-bar"><span class="mag-fill weak" style="width: 25.8%"></span></span>
+            <span class="mag-val">25.8</span>
+          </div>
+          <div class="mag-row">
+            <span class="mag-label">+ MoDirect-Inst (instruction tuning)</span>
+            <span class="mag-bar"><span class="mag-fill mid" style="width: 60.5%"></span></span>
+            <span class="mag-val">60.5</span>
+          </div>
+          <div class="mag-row mag-row-reveal" id="magReveal">
+            <span class="mag-label">
+              + <b>rescaled to P-Syn magnitude</b>
+              <small>no extra training</small>
+            </span>
+            <span class="mag-bar">
+              <span class="mag-fill mid-faded" style="width: 60.5%"></span>
+              <span class="mag-fill add" id="magAdd" style="width: 0%"></span>
+              <span class="mag-delta" id="magDelta">+15.5pp</span>
+            </span>
+            <span class="mag-val" id="magVal">60.5</span>
+          </div>
+        </div>
+
+        <p class="mag-foot">
+          <b>+15.5 pp</b> on Cutout-on-Real. The OOD failure is a
+          <em>magnitude deficit</em>.
+          <button class="mag-replay" id="magReplay" type="button">
+            <i class="fas fa-rotate-right"></i> Replay
+          </button>
+        </p>
+      </div>
+
+      <p class="chapter-takeaway">
+        The readout state shares a common direction <em>axis</em> across domains &mdash; what it
+        lacks is <em>amplitude</em>. The actionable target: <b>make the projector output carry a
+        stronger signed-displacement signal before it enters the LLM</b>. This is exactly the
+        design principle behind DeltaDirect ↓
+      </p>
+    </article>
+  </div>
+</section>
+
+<!-- ================ METHOD ================ -->
+<section class="section section-soft" id="method">
+  <div class="container">
+    <h2 class="section-title">Method · DeltaDirect</h2>
+    <p class="section-desc">
+      DeltaDirect attaches a lightweight motion-change head at the vision-language interface during
+      training. The head consumes a frame-difference descriptor and is supervised by an MSE motion loss.
+      At inference, the head is discarded &mdash; the projector and LLM alone produce the answer.
+    </p>
+
+    <div class="method-grid reveal">
+      <div class="method-left">
+        <figure class="figure-block tall">
+          <img src="./static/images/method.png" alt="DeltaDirect architecture"/>
+        </figure>
+      </div>
+
+      <div class="method-right">
+        <ol class="method-steps">
+          <li>
+            <span class="step-no">1</span>
+            <div>
+              <h4>Frame-difference descriptor</h4>
+              <p>Pool projector outputs of adjacent frames:</p>
+              <div class="method-eq"><code>δ<sub>t</sub> = Pool(F<sub>t+1</sub> &minus; F<sub>t</sub>)</code></div>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">2</span>
+            <div>
+              <h4>Motion head</h4>
+              <p>A 2-layer MLP maps <code>δ<sub>t</sub></code> to a predicted motion-change descriptor <code>m̂<sub>t</sub></code>.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">3</span>
+            <div>
+              <h4>Auxiliary loss</h4>
+              <div class="method-eq"><code>L<sub>MVP</sub> = MSE(m<sub>t</sub>, m̂<sub>t</sub>)</code></div>
+              <p>Added to the language modeling loss with weight λ.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">4</span>
+            <div>
+              <h4>Drop the head at inference</h4>
+              <p>Only the (nudged) projector and LLM remain. Zero parameter overhead at deployment.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================ RESULTS ================ -->
+<section class="section" id="results">
+  <div class="container">
+    <h2 class="section-title">Results</h2>
+    <p class="section-desc">
+      Direction-QA top-1 accuracy on the two MoDirect benchmarks &mdash;
+      <em>SynBench</em> (averaged over the four P/C × Syn/Real cells) and
+      <em>RealBench</em> (averaged over SSv2, KTH, TOMATO). Toggle to compare
+      controlled vs real-world generalization across every model in Table 1.
+    </p>
+
+    <div class="bars-card reveal">
+      <div class="bars-tabs" role="tablist">
+        <button class="bar-tab active" data-domain="Syn">MoDirect-SynBench Avg</button>
+        <button class="bar-tab"        data-domain="Real">MoDirect-RealBench Avg</button>
+      </div>
+      <div class="bars" id="bars" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================ CITE ================ -->
+<section class="section section-soft" id="cite">
+  <div class="container narrow">
+    <h2 class="section-title">Citation</h2>
+    <p class="section-desc">If you find this work useful, please cite us.</p>
+
+    <div class="bib reveal">
+      <button class="bib-copy" id="copyBibtex" type="button">
+        <i class="far fa-copy"></i><span>Copy</span>
+      </button>
+      <pre id="bibtex">@article{lee2026deltadirect,
+  title   = {Which Way Did It Move? Diagnosing and Overcoming
+             Directional Motion Blindness in Video-LLMs},
+  author  = {Lee, Jongseo and Lee, Hyuntak and Kim, Sunghun and
+             Kim, Sooa and Chung, Jihoon and Choi, Jinwoo},
+  journal = {arXiv preprint arXiv:2605.22823},
+  year    = {2026}
+}</pre>
+    </div>
+
+    <div class="cite-links reveal">
+      <a class="link-btn" href="https://arxiv.org/abs/2605.22823" target="_blank" rel="noopener">
+        <i class="ai ai-arxiv"></i><span>arXiv:2605.22823</span>
+      </a>
+      <a class="link-btn" href="https://github.com/KHU-VLL/DeltaDirect" target="_blank" rel="noopener">
+        <i class="fab fa-github"></i><span>KHU-VLL/DeltaDirect</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================ FOOTER ================ -->
+<footer class="foot">
+  <div class="container narrow">
+    <p>For questions or replication notes, please contact the corresponding author.</p>
+    <p class="tiny">© 2026 <a href="https://github.com/KHU-VLL" target="_blank" rel="noopener">KHU&nbsp;VLL</a>, Kyung Hee University. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="./static/js/index.js"></script>
+</body>
+</html>

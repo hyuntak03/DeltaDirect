@@ -1,0 +1,661 @@
+                                                              Which Way Did It Move?
+                                                             Diagnosing and Overcoming
+                                                     Directional Motion Blindness in Video-LLMs
+
+
+                                             Jongseo Lee1        Hyuntak Lee1 Sunghun Kim1           Sooa Kim1      Jihoon Chung2          Jinwoo Choi1†
+                                                                         1 Kyung Hee University      2 Princeton University
+
+
+
+
+arXiv:2605.22823v1 [cs.CV] 21 May 2026
+                                                {jong980812, takhyun03, rlatjdgns0816, suhakim12, jinwoochoi}@khu.ac.kr
+                                                                         jc5933@princeton.edu
+
+
+
+                                                                                        Abstract
+                                                     Video Large Language Models (Video-LLMs) have made rapid progress on tem-
+                                                     poral video understanding, yet many fail at a basic perceptual primitive: signed
+                                                     image-plane motion direction. On simple videos of a single object moving
+                                                     left, right, up, or down, most Video-LLMs perform near chance, with above-
+                                                     chance cases largely attributable to prediction biases rather than genuine direc-
+                                                     tion understanding. We call this failure directional motion blindness. We lo-
+                                                     calize the failure by tracing motion direction information through the Video-
+                                                     LLM pipeline. Motion direction remains linearly accessible from the vision en-
+                                                     coder, projector, and LLM hidden states, but the readout fails to bind this sig-
+                                                     nal to the correct verbal answer option, revealing a direction binding gap. Al-
+                                                     though synthetic motion direction instruction tuning reduces this gap on the source
+                                                     domain, motion direction concept vector analysis shows that visual complex-
+                                                     ity weakens the signal magnitude and limits out-of-domain generalization. We
+                                                     introduce M O D IRECT, a dataset family for motion direction instruction tuning
+                                                     and evaluation, and DeltaDirect, a diagnosis-driven, projector-level objec-
+                                                     tive that predicts normalized 2-D motion vectors from adjacent-frame feature
+                                                     deltas. On M O D IRECT-S YN B ENCH, instruction tuning with DeltaDirect
+                                                     improves motion direction accuracy from 25.9% to 85.4%. On M O D IRECT-
+                                                     R EAL B ENCH, DeltaDirect improves real-world motion direction accuracy
+                                                     by 21.9 points over the vanilla baseline without real-world tuning data, while
+                                                     preserving standard video-understanding performance. The code is available at
+                                                     https://github.com/KHU-VLL/DeltaDirect.
+
+
+                                         1     Introduction
+                                         Recent work on Video-LLMs has made rapid progress in temporal understanding [21, 33, 41, 52, 57]
+                                         with different benchmarks analyzing a model’s temporal capability by testing its memory [51], abil-
+                                         ity to identify complex human action or object movements [41, 55, 57], identifying the order of
+                                         stitched videos [41, 80], or understanding long-form videos [16, 44, 82]. Despite this progress, we
+                                         find that many Video-LLMs [2, 9, 30, 32, 36, 37, 63, 77] fail at a much simpler temporal primitive:
+                                         motion direction understanding. Consider a seemingly trivial synthetic video in which a yellow cir-
+                                         cle moves from left to right, as shown in Figure 1. Can a Video-LLM correctly tell which way it
+                                         moves: left→right, right→left, bottom→top, or top→bottom? To our surprise, most Video-LLMs
+                                         show accuracy close to random chance (25%), with Gemini2.5-Flash [11] only reaching 53.5% ac-
+                                         curacy. Humans identify such motion directions instantly and effortlessly, reflecting the fundamental
+                                         role of motion direction in visual perception and physical navigation [5, 18, 46]. We refer to this
+                                         systematic failure to distinguish signed motion directions as directional motion blindness.
+                                             † Corresponding author.
+
+
+
+                                         Preprint.
+                       Input video                                                 Chance                      Color         Motion direction
+
+
+                                                           Gemini 2.5 Flash [11]                                      53.5
+                                                           VideoLLaMA3-7B [74]                                     50.3
+                                                               Qwen3-VL-4B [3]                                     49.7
+
+               Ground Truth: “Rightward”                            GPT-4o [24]                         43.3
+                                                             InternVL-2.5-4B [7]                 31.4
+       Q: "What color                 Q: "Which way
+                                                           Video-LLaVA-7B [37]             27.2
+   is the moving object?"         is the object moving?"
+                                                           LLaVA-Video-7B [78]            25.9
+            “Yellow”                    “Leftward”             LLaVA-Video-7B
+                                                               w/ D ELTA D IRECT                                                                85.4
+Video-LLM                   Video-LLM
+                                                                                     25                    50                        75                100
+             Directional motion blindness                                                                      Top-1 Accuracy (%)
+                            (a)                                                                         (b)    1
+
+
+
+
+Figure 1: Directional motion blindness in Video-LLMs. (a) Given a simple synthetic video of a
+yellow circle moving from left to right, recent Video-LLMs correctly identify the object’s color but
+answer the wrong motion direction. (b) Across Video-LLMs, appearance recognition is high, yet
+signed motion direction accuracy remains much lower, often near chance.
+
+
+
+To understand where this failure arises, we trace motion direction information across the Video-
+LLM pipeline. We find that the signal remains linearly accessible throughout the pipeline: motion
+direction is decodable from the visual encoder, the projector output, and intermediate LLM states.
+The breakdown emerges at the readout position, i.e., the final token representation used to predict
+the answer: although a motion direction signal is still linearly accessible, the model does not reliably
+connect it to the correct verbal response [45, 49]. We call this mismatch a direction binding gap,
+and observe the same pattern across multiple Video-LLMs (Figure 3). This suggests that directional
+motion blindness is not simply a failure of visual perception, but a failure to make an available
+motion signal usable for language-level readout.
+We therefore introduce M O D IRECT, a dataset family for signed image-plane motion direction,
+with three subsets: M O D IRECT-I NST, M O D IRECT-S YN B ENCH, and M O D IRECT-R EAL B ENCH.
+Its synthetic part contains four domains under a controlled 2×2 design over foreground type and
+background type: Primitive-on-Syn, Cutout-on-Syn, Primitive-on-Real, and Cutout-on-Real. Prim-
+itive videos contain rendered geometric primitives such as circles, triangles, and squares; Cutout
+videos contain segmented real-world object images [38]. Synthetic videos use uniform-color back-
+grounds, whereas Real videos use natural scene backgrounds [81]. From the simplest synthetic do-
+main, Primitive-on-Syn, we construct M O D IRECT-I NST for instruction tuning. We use all four syn-
+thetic domains as M O D IRECT-S YN B ENCH for controlled synthetic evaluation, and use M O D IRECT-
+R EAL B ENCH for real-video evaluation.
+Instruction tuning on M O D IRECT-I NST substantially improves on the source domain motion direc-
+tion recognition. However, models that perform well on Primitive-on-Syn still degrade on more
+complex domains, especially Cutout-on-Real. This indicates that next-token prediction on motion
+direction instructions can improve answer binding on the source domain, Primitive-on-Syn, but does
+not necessarily produce a strong domain-invariant motion direction signal.
+We next ask why this generalization gap persists. Using difference-in-means [1, 31, 45, 53, 60] mo-
+tion direction concept vectors, we extract motion direction concept vectors from the readout position
+of each LLM layer for each domain and motion direction. After instruction tuning, motion direction
+concept vectors become well aligned across domains, despite being trained only on Primitive-on-
+Syn; for example, at certain layers, their cross-domain cosine similarity is much higher than in the
+baseline without motion direction instruction tuning. Yet their magnitude drops sharply on com-
+plex domains, mirroring the observed accuracy drop. Moreover, restoring only the magnitude of the
+motion direction concept vector recovers much of the lost accuracy. These results suggest that the
+out-of-domain failure is not due to a missing motion direction geometry, but to a magnitude deficit:
+the model learns the motion direction structure, but the signal is too weak to be reliably read out
+across domains. Please refer to Section 3 for more details.
+This diagnosis motivates DeltaDirect, a training-only projector-level objective that strengthens
+signed displacement cues at the visual-language interface. Rather than adding motion tokens or a
+motion-specific encoder at inference time, DeltaDirect uses analytically available 2-D motion
+vectors from M O D IRECT-I NST as supervision during training. Specifically, DeltaDirect pre-
+dicts normalized 2-D motion vectors from adjacent-frame projector-feature deltas, encouraging the
+
+
+                                                                   2
+projector output to carry a stronger signed displacement signal before it enters the LLM. The aux-
+iliary branch is discarded after training, leaving the test-time input format, token sequence, model
+architecture, and decoding procedure unchanged.
+We evaluate DeltaDirect across synthetic, real-world, and general video understanding bench-
+marks. On M O D IRECT-S YN B ENCH, instruction tuning on M O D IRECT-I NST improves over the
+zero-shot model, and adding DeltaDirect further improves average motion direction accuracy
+by 6.5 points, with the largest gain of 11.2 points on Cutout-on-Real. To test real-world transfer,
+we construct M O D IRECT-R EAL B ENCH, a motion direction benchmark curated from Something-
+Something-V2 (SSv2) [19], TOMATO [57], and KTH [56]. Without seeing real-world videos during
+tuning, DeltaDirect improves accuracy by 21.9 points over the vanilla baseline. Beyond mo-
+tion direction-specific benchmarks, DeltaDirect preserves or improves performance on standard
+video understanding benchmarks [21, 32, 41, 44, 51, 61, 75], suggesting positive transfer rather than
+overfitting to synthetic motion. Finally, when applied during full fine-tuning, DeltaDirect alone
+yields strong improvements on both motion direction and general video benchmarks, indicating that
+motion-vector supervision can serve as a useful training signal for future Video-LLMs.
+In this work, our major contributions are threefold:
+        • We identify directional motion blindness in Video-LLMs: despite strong appearance recog-
+          nition, recent models fail to distinguish basic signed motion directions such as left, right,
+          up, and down. We diagnose this failure as a direction binding gap, where motion direction
+          information is linearly decodable but not reliably bound to the correct verbal response.
+        • We show that instruction tuning closes the direction binding gap on the source domain but
+          leaves an out-of-domain generalization gap. Through concept vector analysis, we trace this
+          gap to a magnitude deficit in shared motion direction representations across domains.
+        • We introduce M O D IRECT, a controlled dataset family for motion direction instruction tun-
+          ing and evaluation, and propose DeltaDirect, a training-only auxiliary objective that
+          predicts motion vectors from adjacent-frame feature deltas. DeltaDirect improves mo-
+          tion direction understanding while preserving or improving general video understanding.
+
+2   Related Work
+Video-LLMs and temporal-motion benchmarks. Video-LLMs extend image-based MLLMs to
+temporal understanding through video instruction tuning, unified image-video architectures, and
+long-video modeling [2–4, 9–11, 24, 30, 36, 37, 39, 42, 43, 63, 74]. Existing benchmarks evaluate
+temporal memory, action and event understanding, temporal ordering, and long-form video reason-
+ing [12, 32, 41, 44, 57]. Motion direction appears in several temporal or motion-centric benchmarks,
+often alongside speed, order, rotation, and broader motion reasoning [14, 21, 34, 61, 67, 75, 83].
+These benchmarks are valuable for real-world evaluation, but real videos entangle apparent direc-
+tion with camera motion, occlusion, object identity, scene layout, scale change, and event semantics.
+We instead separate diagnosis from transfer: controlled synthetic videos isolate signed image-plane
+direction, and real-world benchmarks test whether the intervention transfers.
+Mechanistic analysis of LLMs. A growing line of work analyzes internal representations rather
+than final outputs alone. Probing and difference-in-means analyses show that model states can
+encode information that is not reliably verbalized [45, 49]. For Video-LLMs, recent work begins to
+trace layer-wise information flow and temporal bottlenecks inside the model [27, 33]. Our analysis
+is complementary: we isolate motion direction as a single perceptual primitive and ask whether the
+signal is present, where it weakens, and how it couples to verbal readout.
+Motion representations and supervision. Video models encode motion explicitly through
+frame differences, optical flow, or trajectories for action recognition [29, 35, 62], flow distilla-
+tion [13, 58, 84], and self-supervised learning [23, 69]. Recent Video-LLMs use motion-vector
+tokenization [26], compressed-video cues [79], optical flow [40, 47], or motion-appearance disen-
+tanglement [73]. DeltaDirect instead uses motion vectors only as training-time supervision on
+projector-feature deltas, without changing the test-time input or decoding pipeline.
+
+3   Where Does Directional Motion Blindness Arise in Video-LLMs?
+We investigate a Video-LLM, LLaVA-Video [78], from visual representations to the answer token,
+and test whether the failure is due to missing supervision, insufficient prompting, visual encoding,
+projection, or the final binding between a perceived direction and the corresponding answer option.
+We also investigate several Video-LLMs and draw the same conclusions. For more results and
+details, refer to Appendix D.
+
+
+                                                  3
+                                         Direction probe accuracy          QA accuracy
+              Outside LLM                                 Inside LLM                          Prediction
+                                                                                                                    95.3%
+
+Visual features       Projector output      Visual tokens           Final readout             Video-LLM
+       "                     !                   #ℓ                       $"                    output
+      99.8%                 96.5%               98.1%                  95.3%                    27.6%      Chance
+                                                                                                                             34.7%       27.6%
+                                                                                                           (25%)
+
+                                                                              Direction binding gap              Direction Input-side Direction QA
+                                                                                                               linear probe scaffolds
+
+
+
+Figure 2: Direction is decodable, but not converted into the answer. On Primitive-on-Syn in
+M O D IRECT-S YN B ENCH, motion direction remains linearly decodable throughout LLaVA-Video-
+7B [78], yet QA accuracy stays near chance, exposing the direction binding gap.
+
+We organize the analysis around three research questions. (i) Can the failure be explained by missing
+direction supervision or insufficient input-side scaffolding? (Section 3.2) (ii) Is the signed direction
+erased by the vision encoder or the vision-language projector, or the intermediate LLM layers?
+(Section 3.3) (iii) If direction remains accessible, can the final readout token bind it to the prompt-
+specific answer option? (Section 3.4) We find that motion direction remains linearly accessible
+across the visual encoder, projector, and LLM hidden states, but the final readout token fails to
+encode the mapping from direction to answer option. We call this mismatch a direction binding gap.
+
+3.1    Experimental Setup
+Datasets. We introduce M O D IRECT-S YN B ENCH, a controlled synthetic benchmark for signed
+image-plane motion direction. M O D IRECT-S YN B ENCH follows a 2×2 design over foreground type
+and background type: Primitive-on-Syn, Cutout-on-Syn, Primitive-on-Real, and Cutout-on-Real.
+Each video contains a single foreground object moving in one of four signed directions: left, right,
+up, down. We randomize start and end positions within the valid frame region and use held-out start–
+end trajectories for evaluation, reducing static-position shortcuts. In every analysis on M O D IRECT-
+S YN B ENCH, we train a linear probe on the training split and evaluate it on held-out videos.
+Task. We use a four-way multiple-choice question (MCQ) format as the primary evaluation pro-
+tocol. The four options correspond to left→right, right→left, bottom→top, and top→bottom. Cru-
+cially, we randomize the order of answer options for each example. Therefore, the correct answer
+letter is not a fixed alias of the motion direction; the model must bind the perceived direction to the
+prompt-specific option text. This design enables single-token, logit-based evaluation and reduces
+free-form generation confounds, while directly testing whether the model can bind the perceived
+direction to the correct prompt-specific option [27, 32, 54].
+Video-LLM pipeline. A Video-LLM processes a video through three stages. Given T sampled
+frames, a vision encoder produces visual features V ∈ RT ×M×Dv , where M denotes the number of
+patch tokens per frame and Dv denotes the embedding dimension. A projector maps these features
+into the LLM embedding space, producing visual tokens F ∈ RT ×N×D , where N ≤ M reflects spatial
+pooling and D is the LLM hidden dimension. An L-layer LLM consumes the visual tokens with
+text tokens and produces an answer. Inside the LLM, we track the hidden states at the visual-token
+positions across layers. Let ztℓ ∈ RD denote the spatially pooled hidden state of the visual-token
+positions at frame t and layer ℓ ∈ {1, . . . , L}.
+We refer to the hidden state at the last token position used for next-token prediction as the readout
+token, and denote hℓ ∈ RD for the readout token at layer ℓ. We call hL the final readout token; this is
+the representation the Language Model (LM) head maps to output vocabulary logits.
+
+3.2    Can Data or Prompting Explain the Failure?
+
+Before inspecting model internals, we rule out two external explanations. First, motion-direction
+supervision is scarce in existing video instruction data. Using keyword pre-filtering followed by
+semantic classification, we estimate that only 0.91% of LLaVA-Video-178K [78] examples are
+direction-dependent; human verification further indicates that these estimates are upper bounds (Ap-
+pendix D.1). This scarcity motivates controlled motion-direction supervision, but it does not localize
+where the failure occurs. Second, simple input-side scaffolds do not solve the task. We test visual
+boundary cues, step-by-step location reasoning [28, 64], and coordinate-grid prompts [6, 8, 71]; the
+best combination reaches only 34.7% on Primitive-on-Syn as shown in Figure 2. Thus, external
+factors alone are insufficient, and we turn to representation-level diagnostics.
+
+
+                                                                       4
+                           Linear probe       Accuracy        Binding gap                                  LLaVA-Video on Primitive-on-Syn
+    LLaVA-OneVision-7B                                                                     100
+        LLaVA-Video-7B
+VideoChat2-mistral-HD-7B                                                                   80            Linear probe
+
+
+
+                                                                            Accuracy (%)
+       mPLUG-Owl3-7B                                                                                     Logit lens
+       VideoLLaMA3-7B                                                                      60
+                                                                                                         Linear probe w/ MoDirect-Inst
+         InternVL-2.5-4B                                                                                 Logit lens w/ MoDirect-Inst
+         Qwen2.5-VL-7B                                                                     40
+   LLaVA-NeXT-Video-7B
+        Video-LLaVA-7B                                                                     20
+                             20       40       60        80     100                              0   4         8        12       16      20   24   28
+                                          Accuracy (%)                Layer
+Figure 3: The direction binding gap is universal Figure 4: Instruction tuning closes the di-
+across Video-LLMs.                               rection binding gap (source domain).
+3.3   Is Motion Direction Erased by the Vision Encoder or Projector?
+We next ask whether the failure is caused by visual processing. We use linear probing as a diagnostic
+tool [20, 31, 49]: if a linear classifier can recover the signed direction from a frozen representation,
+then that representation contains direction information in a linearly accessible form. This does not
+imply that the model can directly use the signal for generation; rather, it tests whether the visual-
+temporal evidence is present before the final readout.
+Vision encoder preserves direction. We train a four-way linear probe on the frozen vision-
+encoder output V. The probe recovers motion direction with 99.8% accuracy (Figure 2), indicating
+that the visual encoder preserves a near-perfect direction signal.
+Projector also preserves direction. We repeat the same probe on the projector output F. Accuracy
+remains high at 96.5%, indicating that the vision-language projection step does not erase the signed
+direction signal. Thus, directional motion blindness is not explained by a lack of linearly accessible
+direction information in either the vision encoder or the projector. The failure must arise from how
+this signal is used or read out by the LLM.
+
+3.4   Can the Readout Bind Motion Direction to the Answer Option?
+Direction information reaches the LLM input in a linearly accessible form. We now ask whether it
+remains accessible inside the LLM and whether the readout token binds this direction signal to the
+correct prompt-specific answer option.
+Direction remains decodable inside the LLM. We probe two internal representations across
+LLM layers: the visual tokens ztℓ and the readout token hℓ . As shown in Figure 2, visual-token
+probes achieve 98.1% ± 1.3, and readout token probes achieve 95.3% ± 2.4. These results show that
+the LLM does not simply discard the direction signal.
+The bottleneck is answer-option binding. The key question is whether the internally decodable
+direction signal reaches the correct answer option. Because the MCQ option order is randomized,
+the answer letter is not a fixed alias of the motion direction; the model must bind the perceived
+direction to the option text in the current prompt. Yet the model achieves only 27.6% MCQ accu-
+racy, near the 25% chance level (Figure 2). This shows that the model carries the direction signal
+internally but fails to bind it to the prompt-specific answer option.
+Direction binding gap. Taken together, these results show that the bottleneck lies not in repre-
+senting motion direction, but in converting that representation into the correct answer option. The
+direction signal remains accessible across the vision encoder, the projector, and the readout state,
+yet it is not reliably bound to the prompt-specific answer option [49, 50, 59]. We call this mismatch
+the direction binding gap. As shown in Figure 3, this gap persists across architectures and scales,
+indicating a shared structural limitation rather than a model-specific artifact. We further verify in
+Appendix D.4 that the same failure appears in open-ended direction-answer generation, confirming
+that the phenomenon is not an artifact of the MCQ format. This diagnosis motivates Section 4,
+where we test whether controlled motion direction instruction tuning can close the gap.
+
+4     What Instruction Tuning Solves and What It Does Not
+Section 3 localizes directional motion blindness to answer-option binding: direction is linearly ac-
+cessible inside the model, but the readout does not reliably link it to the correct answer option. We
+now test the most direct remedy: motion direction instruction tuning. We fine-tune on the simplest
+synthetic domain and ask whether the learned binding transfers to more complex visual conditions.
+
+
+                                                                   5
+4.1   Setup: Training on M O D IRECT-I NST, Testing on M O D IRECT-S YN B ENCH
+Training data. We fine-tune a Video-LLM on M O D IRECT-I NST, a synthetic instruction dataset
+built from the Primitive-on-Syn domain. M O D IRECT-I NST contains 100K training videos with
+diverse motion direction-related QA formats, including direction MCQ, open-ended direction, and
+static appearance questions (e.g., object color and shape, to preserve general visual recognition) .
+Evaluation data. We use M O D IRECT-S YN B ENCH as our testbed. M O D IRECT-S YN B ENCH in-
+cludes Primitive-on-Syn, the source domain used to construct M O D IRECT-I NST, and three OOD
+domains: Primitive-on-Real, Cutout-on-Syn, and Cutout-on-Real. These OOD domains introduce
+natural scene backgrounds [81], realistic object cutouts [38], or both. This split allows us to distin-
+guish source domain binding from domain-invariant direction understanding.
+Training. We use LLaVA-Video-7B [78] as the backbone, keep the vision encoder and original
+LLM weights frozen, and update only the projector and LoRA [22] adapters in the LLM.
+We provide the comprehensive details of the analysis in Appendix A.3.
+
+4.2   Source Domain: Answer-Option Binding Emerges
+
+We evaluate whether instruction tuning closes the direction binding gap on the held-out Primitive-on-
+Syn test set. We repeat the layer-wise probing analysis from Section 3. To diagnose answer-option
+binding, we use the logit lens [27, 48], which projects each intermediate readout token hℓ through
+the LM head without training an external classifier. This measures whether the LM head can recover
+the correct answer letter at each layer. As shown in Figure 4, in the vanilla model, direction is
+highly decodable from the readout token (—), but its logit lens accuracy stays near chance (- -),
+matching its low MCQ accuracy of 27.6%. After instruction tuning, logit lens accuracy (- -) rises in
+the late layers and converges to direction probing accuracy (—) in the final layers. MCQ accuracy
+correspondingly increases to 99.5%. Thus, direction-focused instruction tuning establishes a source
+domain binding pathway from the internal direction signal to the correct answer option.
+
+4.3   Out-of-Domain: The Binding Gap Reopens
+
+We next ask whether this learned binding transfers to more complex visual conditions. As shown in
+Figure 5 (a), instruction tuning nearly closes the gap on the source domain Primitive-on-Syn test set
+(0.3 points), but the gap reopens on OOD domains, e.g., 12.1 points on Cutout-on-Real. Although
+direction remains decodable from the final readout token, MCQ accuracy drops as object and back-
+ground complexity increase. This suggests that next-token supervision learns source domain answer
+binding, but does not produce a direction signal strong enough for reliable OOD readout.
+
+4.4   Why Does the Binding Gap Reopen? Shared Orientation but Insufficient Magnitude
+
+To understand the OOD failure, we analyze motion direction concept vectors using difference-in-
+means [1, 31, 45, 53, 60] at the readout state after instruction tuning. For each domain A, di-
+rection class d, and layer ℓ, we define vℓd,A = E[hℓ | y = d, A] − E[hℓ | A]. Here we compute the
+expectation over the M O D IRECT-S YN B ENCH samples. We decompose each vector into its unit
+orientation v̂ℓd,A = vℓd,A /∥vℓd,A ∥ and magnitude ∥vℓd,A ∥. We use “orientation” here to distinguish the
+representation-space axis from the physical motion direction.
+Orientation aligns across domains. To test whether the representation space orientation of each
+motion direction is shared across domains, we compare unit motion direction concept vectors across
+domains. For each layer                  d ∈ {left, right, up, down}, and unordered pair of domains
+                             ℓ, direction
+(A, B), we compute cos v̂ℓd,A , v̂ℓd,B . Since M O D IRECT-S YN B ENCH has four domains, this gives
+ 4
+ 2 = 6 domain pairs and therefore 4 × 6 = 24 cosine similarity values per layer. The cosine simi-
+larity reported in Figure 5 (b) is the average over these values. After instruction tuning, this average
+rises sharply in the late layers, indicating that the model learns a shared motion direction concept
+vector orientation for each motion direction across domains, despite being trained on Primitive-on-
+Syn.
+Magnitude drops under visual complexity. The aligned orientation alone is insufficient. As
+shown in Figure 5 (c), the same late layers exhibit a magnitude drop under increasing visual com-
+plexity; in particular, Cutout-on-Real shows a clear magnitude deficit relative to Primitive-on-Syn.
+This mirrors the OOD MCQ accuracy drop and suggests a magnitude deficit: although domains
+
+
+                                                   6
+Figure 5: Shared orientation, weak magnitude. (a) Instruction tuning closes the binding gap
+on Primitive-on-Syn, but the gap reopens on OOD domains; DeltaDirect narrows it across
+domains. (b) Direction concept vector orientations align across domains after instruction tuning,
+with late-layer cosine similarity exceeding 0.9. (c) Despite this alignment, concept-vector magnitude
+decreases with visual complexity, revealing the magnitude deficit behind the OOD binding gap.
+
+
+share a motion direction concept vector orientation for each motion direction, the corresponding
+signal magnitude is too weak in complex domains to support reliable answer-option binding.
+
+Restoring magnitude recovers accuracy. As a diagnostic intervention, for each OOD sample
+with ground-truth motion direction d, we rescale hℓ along the corresponding unit concept-vector
+orientation v̂ℓd,A to match the average Primitive-on-Syn magnitude, leaving the orthogonal compo-
+nent unchanged. We observe that this intervention improves OOD MCQ accuracy, with the largest
+gain of 15.5 points on Cutout-on-Real. These results suggest that the OOD binding gap is not caused
+by a missing shared orientation across domains, but by insufficient signal magnitude. For more re-
+sults and details, refer to Appendix D.8.
+This motivates a training objective (Section 5) that does not merely teach the answer token, but
+makes the projector output carry a stronger signed displacement signal before it enters the LLM.
+
+
+5   DeltaDirect: Strengthening Motion Signals at the VL Interface
+
+The preceding sections suggest a specific intervention point. Directional motion blindness is not
+caused by the complete absence of direction evidence: direction is linearly accessible from the
+vision encoder, projector output, and LLM hidden states (Section 3). However, this signal is not
+reliably bound to the correct answer option. Moreover, motion direction instruction tuning closes
+the binding gap on the source domain, but visual complexity weakens the magnitude of the shared
+concept-vector orientation, reopening the gap in out-of-domains (Section 4).
+These observations motivate a simple design principle: make the                                                      “A. Up and Right”
+projector output carry a stronger signed displacement signal be-
+fore it enters the LLM. We therefore introduce DeltaDirect,                              Large Language Model
+a training-only auxiliary objective applied to the projector output.                             Difference
+
+Instead of adding learned motion tokens, or a motion-specific en-                  ...
+coder at inference time, DeltaDirect uses synthetic 2-D motion
+                                                                            𝐅%            𝐅%&'              𝐅%&' − 𝐅%
+vectors as supervision during training. The auxiliary branch is dis-                                             𝑃𝑜𝑜𝑙! (⋅)
+                                                                                     𝐅 ∈ ℝ!×#×$
+carded after training, so the test-time input format, token sequence,
+model architecture, and decoding procedure remain unchanged.                Projector                        𝛿% ∈ ℝ$
+
+These observations lead to three design requirements. First, the su-    Vision encoder                     Motion head
+
+pervision should act at the projector output, where visual tokens
+                                                                                         𝑡+1
+enter the LLM. Second, it should target motion-induced change
+                                                                        𝑡            𝐦%                    '%
+                                                                                                           𝐦
+rather than static appearance, so we supervise adjacent-frame fea-               Ground truth
+                                                                                                     Motion-change
+ture deltas. Third, it should supervise signed displacement directly,   Input video                    descriptor
+                                                                                                                         “Which way
+rather than only the answer word, so we predict normalized 2-D mo-                  𝐿!"# 𝐦$
+                                                                                                   Eq(4)
+                                                                                                           #$
+                                                                                                           𝐦       is the object moving?”
+                                                                                                   𝑀𝑆𝐸                   Input QA
+tion vectors. DeltaDirect instantiates these requirements with
+a training-only branch.
+                                                                        Figure 6: DeltaDirect.
+
+                                                  7
+5.1   Motion-Induced Feature Deltas
+DeltaDirect operates on the projector output F ∈ RT ×N×D . For each adjacent frame pair, we
+spatially pool the temporal feature difference to obtain a motion-change descriptor:
+                             1 N
+                      δt =     ∑ (Ft+1 [n] − Ft [n]) ∈ RD ,
+                             N n=1
+                                                                  t = 1, . . . , T − 1.            (1)
+
+ Feature differencing suppresses content that remains stable across adjacent frames and focuses the
+auxiliary branch on motion-induced change. We compute deltas at the projector output because these
+are the visual tokens directly passed to the LLM. This lets the auxiliary branch emphasize motion-
+induced changes in the same representation space used for language readout, without modifying the
+vision encoder or adding inference-time motion inputs.
+
+5.2   Training-Only Motion Vector Prediction
+Motion vector target. Because M O D IRECT-I NST is synthetic, the object center ct ∈ R2 is known
+at each frame. For each moving frame pair, we define the normalized 2-D motion target
+                                                ct+1 − ct
+                                     mt =                     ∈ R2 .                               (2)
+                                            ∥ct+1 − ct ∥2 + ε
+ This target captures the signed image-plane displacement direction while removing speed as a
+confounding factor. Rather than treating directions as discrete labels for an auxiliary classifier, the
+normalized vector target preserves the geometry of signed displacement: opposite motions have
+opposite targets, and different directions remain geometrically related in the same 2-D space.
+Prediction head. A lightweight linear head predicts the motion vector from each pooled delta:
+                              m̂t = W δ t + b,      W ∈ R2×D , b ∈ R2 .                            (3)
+The head introduces only 2D + 2 trainable parameters and is used only during training.
+MVP loss. We define the Motion Vector Prediction loss as
+                                               1 T −1
+                                    LMVP =        ∑ ∥m̂t − mt ∥22 .
+                                             T −1 t=1
+                                                                                                   (4)
+
+ This objective does not ask the model to memorize a direction word. Instead, it directly shapes
+the projector output so that adjacent-frame changes preserve signed displacement cues before en-
+tering the LLM. We apply MVP supervision at the projector output by default, and compare it with
+intermediate-layer and readout-position supervision in Appendix E.
+
+5.3   Training Objective and Inference
+The final training objective combines standard next-token prediction with the MVP loss:
+                                        Ltotal = LLM + λ LMVP ,                                    (5)
+ where LLM is the next-token cross-entropy on answer tokens and λ controls the auxiliary loss
+weight. The MVP branch updates only the projector and prediction head; the LLM decoder is
+trained solely by LLM . During inference, the MVP branch is removed, leaving the original input
+format, token sequence, and decoding procedure unchanged.
+
+
+6     Experimental Results
+We evaluate whether DeltaDirect turns our diagnosis into practical gains. We focus on three
+questions: (i) Does it reduce the diagnosed binding gap? (ii) Does DeltaDirect improve syn-
+thetic and real-world motion-direction understanding without real-world direction supervision? (iii)
+Does it preserve general video understanding? Implementation details, benchmark protocols, and
+additional analyses and ablations are provided in Appendix A, E.
+
+6.1   Improving Motion Direction without Sacrificing General Video Understanding
+The direction binding gap narrows. In Figure 5 (a), instruction tuning on M O D IRECT-I NST
+leaves a widening binding gap (12.1 on Cutout-on-Real) under visual complexity. DeltaDirect
+reduces this gap to 3.7 points on Cutout-on-Real and narrows it on every OOD domain.
+
+                                                    8
+Table 1: DeltaDirect achieves state-of-the-art motion direction understanding. We report
+Top-1 accuracy (%) on M O D IRECT-S YN B ENCH and M O D IRECT-R EAL B ENCH.
+                                                       M O D IRECT-S YN B ENCH                      M O D IRECT-R EAL B ENCH
+                                                                                                                                        Overall
+ Method                                       P-Syn    C-Syn   P-Real   C-Real   Avg.   SSv2 [19]    KTH [56]     TOMATO [57]   Avg.
+                                                                                                                                         Avg.
+ Random Chance                                25.0      25.0    25.0     25.0    25.0      50.0         50.0           20.0     40.0      31.4
+ GPT-4o [24]                                  46.6      37.8    48.0     40.7    43.3      51.0         52.3           34.5     45.9      44.4
+ Gemini 2.5 Flash [11]                        58.1      43.4    61.7     50.6    53.5      20.0         69.4           25.6     38.3      47.0
+ Video-LLaVA-7B [37]                          28.1      27.8    25.5     27.2    27.2      49.2         49.5           14.6     37.8      31.7
+ VideoChat2-HD-7B [32]                        26.1      23.5    24.6     24.1    24.6      50.0         54.2           20.1     41.4      31.8
+ LLaMA-VID-7B [36]                            25.3      25.6    24.7     25.0    25.2      51.4         54.2           16.9     40.8      31.9
+ LLaVA-NeXT-Video-7B                          25.8      24.8    25.0     25.2    25.2      50.8         52.4           21.1     41.4      32.2
+ LLaVA-OneVision-7B [30]                      28.3      23.4    29.9     29.3    27.7      52.2         50.3           26.8     43.1      34.3
+ Qwen2.5-VL-7B [4]                            45.1      32.5    30.8     30.2    34.7      52.6         44.2           25.3     40.7      37.2
+ Qwen3-VL-4B [3]                              66.6      50.2    40.8     41.1    49.7      60.9         62.1           35.0     52.7      51.0
+ InternVL-2.5-4B [7]                          31.9      31.8    30.4     31.4    31.4      66.1         50.7           26.1     47.6      38.3
+ VideoLLaMA3-7B [74]                          56.4      46.6    50.0     48.3    50.3      56.5         52.2           19.9     42.9      47.1
+ LLaVA-Video-7B [78]                          27.6      23.4    26.9     25.8    25.9      52.2         50.3           26.8     43.1      33.3
+ LLaVA-Video-7B w/ FlashVID [15]              25.2      25.1    24.3     24.8    24.9      52.5         50.3           21.8     41.5      32.0
+ LLaVA-Video-7B w/ M O D IRECT-I NST          99.5      80.7    74.7     60.5    78.9      72.4         66.6           35.2     58.1      69.9
+ LLaVA-Video-7B w/ DeltaDirect                99.7      84.9    85.2     71.7    85.4      81.5         74.8           38.8     65.0      76.7
+ Qwen2-0.5B Full-FT w/ M O D IRECT-I NST      99.5      97.3    62.5     51.5    77.7      59.0         55.2           20.6     44.9      63.7
+ Qwen2-0.5B Full-FT w/ DeltaDirect            99.7      98.7    91.0     80.1    92.4      77.8         69.4           21.7     56.3      76.9
+
+
+ Table 2: Where to apply supervision.                                    Table 3: What motion signal to supervise.
+                            M O D IRECT                                                                        M O D IRECT
+Stage                                                MVBench      Supervision target                                             MVBench
+                    S YN B ENCH R EAL B ENCH                                                        S YN B ENCH R EAL B ENCH
+None                     78.9          58.1            60.9       M O D IRECT-I NST tuning only         78.9            58.1           60.9
+Vision encoder           80.4          59.3            60.9
+Pre-projector            86.1          62.2            60.2       Frame order                           24.7            40.3           54.5
+Post-projector           85.4          65.0            60.7       Concat. feature deltas                80.1            58.0           60.7
+LLM visual tokens        70.0          58.3            57.4       Delta equivariance                    78.4            58.0           60.6
+Final readout            27.7          42.5            59.9       DeltaDirect                           85.4            65.0           60.7
+
+
+DeltaDirect substantially improves motion direction. Table 1 shows that M O D IRECT-
+I NST tuning nearly solves Primitive-on-Syn (99.5%) but transfers poorly to the hardest synthetic
+OOD domain, Cutout-on-Real, (60.5%). DeltaDirect targets this gap, improving Cutout-on-
+Real to 71.7% and raising M O D IRECT-S YN B ENCH average accuracy from 78.9% to 85.4% over
+M O D IRECT-I NST alone. It also transfers to real videos without real-world tuning, improving
+M O D IRECT-R EAL B ENCH Avg. from 43.1% to 65.0% over vanilla LLaVA-Video-7B. In full fine-
+tuning, the same trend holds: DeltaDirect raises M O D IRECT-S YN B ENCH performance from
+77.7% to 92.4% and M O D IRECT-R EAL B ENCH Avg. from 44.9% to 56.3%.
+DeltaDirect improves general video un- Table 4: General video understanding results.
+derstanding. Although DeltaDirect tar-
+gets motion direction, it improves aggregate Method                                        Standard Fine-grained
+
+general video performance in Standard [25,         LLaVA-Video-7B  [78]                      69.4       47.3
+                                                   LLaVA-Video-7B w/ DeltaDirect             70.1       48.7
+32, 44, 51, 66] and Fine-grained [21, 41, 61,
+75] video benchmarks. For LLaVA-Video-7B, Qwen2-0.5B          Full-FT w/ M O D IRECT-I NST
+                                                   Qwen2-0.5B Full-FT w/ DeltaDirect
+                                                                                             58.7
+                                                                                             59.4
+                                                                                                        32.8
+                                                                                                        33.3
+Standard and Fine-grained averages increase
+from 69.4 to 70.1 and from 47.3 to 48.7, respectively. In the full fine-tuning setup, DeltaDirect
+further improves over M O D IRECT-I NST on both averages (58.7 → 59.4, 32.8 → 33.3). Thus, direc-
+tion supervision does not trade off broader video capability.
+
+6.2     Ablation Study
+Where to apply supervision. In Table 2, we apply MVP supervision at various locations in a
+Video-LLM. Post-projector supervision performs best on average, while readout supervision per-
+forms poorly despite the binding gap being observed there. This supports strengthening motion
+signals at the vision-language interface, before the LLM transforms them for answer generation.
+What motion signal to supervise. In Table 3, we compare DeltaDirect with various super-
+vision targets including a direction-aware delta equivariance objective. DeltaDirect performs
+best, indicating that signed 2-D motion-vector supervision is most effective.
+7       Conclusions
+In this work, we identify directional motion blindness, a systematic failure of Video-LLMs to resolve
+signed image-plane motion direction. Through controlled diagnosis on M O D IRECT, we localize the
+
+
+                                                                         9
+failure to a direction binding gap: motion direction remains linearly accessible inside the model,
+but is not reliably connected to the correct verbal response. Instruction tuning closes this gap on the
+source domain, but visual complexity reopens it through a magnitude deficit in the shared direction
+representation. We address this with DeltaDirect, a training-only objective that predicts mo-
+tion vectors from adjacent-frame projector-feature deltas, strengthening signed displacement cues
+without changing inference. Trained only with synthetic motion supervision, DeltaDirect im-
+proves synthetic and real-world direction understanding while preserving general video understand-
+ing. These results suggest that diagnosis-driven supervision can help close perception–language
+gaps in Video-LLMs.
+
+References
+ [1] Andy Arditi, Oscar Obeso, Aaquib Syed, Daniel Paleka, Nina Panickssery, Wes Gurnee, and Neel Nanda.
+     Refusal in language models is mediated by a single direction. In NeurIPS, 2024. 2, 6, 33, 37
+
+ [2] Kyungho Bae, Jinhyung Kim, Sihaeng Lee, Soonyoung Lee, Gunhee Lee, and Jinwoo Choi. Mash-
+     vlm: Mitigating action-scene hallucination in video-llms through disentangled spatial-temporal represen-
+     tations. In CVPR, 2025. 1, 3
+
+ [3] Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng, Lianghao Deng, Wei
+     Ding, Chang Gao, Chunjiang Ge, et al. Qwen3-vl technical report. arXiv preprint arXiv:2511.21631,
+     2025. 9, 17, 18, 32, 37, 48, 49, 51
+
+ [4] Shuai Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Sibo Song, Kai Dang, Peng Wang, Shijie
+     Wang, Jun Tang, Humen Zhong, Yuanzhi Zhu, Mingkun Yang, Zhaohai Li, Jianqiang Wan, Pengfei Wang,
+     Wei Ding, Zheren Fu, Yiheng Xu, Jiabo Ye, Xi Zhang, Tianbao Xie, Zesen Cheng, Hang Zhang, Zhibo
+     Yang, Haiyang Xu, and Junyang Lin. Qwen2. 5-vl technical report. arXiv preprint arXiv:2502.13923,
+     2025. 3, 9, 32, 49
+
+ [5] Richard T Born and David C Bradley. Structure and function of visual area mt. Annu. Rev. Neurosci., 28
+     (1):157–189, 2005. 1
+
+ [6] Boyuan Chen, Zhuo Xu, Sean Kirmani, Brain Ichter, Dorsa Sadigh, Leonidas Guibas, and Fei Xia. Spa-
+     tialvlm: Endowing vision-language models with spatial reasoning capabilities. In CVPR, 2024. 4
+
+ [7] Zhe Chen, Jiannan Wu, Wenhai Wang, Weijie Su, Guo Chen, Sen Xing, Muyan Zhong, Qinglong Zhang,
+     Xizhou Zhu, Lewei Lu, et al. Internvl: Scaling up vision foundation models and aligning for generic
+     visual-linguistic tasks. In CVPR, 2024. 9, 17, 18, 26, 32, 49
+
+ [8] An-Chieh Cheng, Hongxu Yin, Yang Fu, Qiushan Guo, Ruihan Yang, Jan Kautz, Xiaolong Wang, and
+     Sifei Liu. Spatialrgpt: Grounded spatial reasoning in vision-language models. In NeurIPS, 2024. 4
+
+ [9] Zesen Cheng, Sicong Leng, Hang Zhang, Yifei Xin, Xin Li, Guanzheng Chen, Yongxin Zhu, Wenqi
+     Zhang, Ziyang Luo, Deli Zhao, et al. Videollama 2: Advancing spatial-temporal modeling and audio
+     understanding in video-llms. arXiv preprint arXiv:2406.07476, 2024. 1, 3
+
+[10] Jihoon Chung, Tyler Zhu, Max Gonzalez Saez-Diez, Juan Carlos Niebles, Honglu Zhou, and Olga Rus-
+     sakovsky. Unifying specialized visual encoders for video language models. In ICML, 2025.
+
+[11] Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice Pasupat, Noveen Sachdeva, Inderjit Dhillon,
+     Marcel Blistein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5: Pushing the frontier with ad-
+     vanced reasoning, multimodality, long context, and next generation agentic capabilities. arXiv preprint
+     arXiv:2507.06261, 2025. 1, 3, 9, 49
+
+[12] Daniel Cores, Michael Dorkenwald, Manuel Mucientes, Cees G. M. Snoek, and Yuki M. Asano. Tvbench:
+     Redesigning video-language evaluation. arXiv:2410.07752, 2024. 3
+
+[13] Nieves Crasto, Philippe Weinzaepfel, Karteek Alahari, and Cordelia Schmid. MARS: Motion-augmented
+     RGB stream for action recognition. In CVPR, 2019. 3
+
+[14] Yipeng Du, Tiehan Fan, Kepan Nan, Rui Xie, Penghao Zhou, Xiang Li, Jian Yang, Zhenheng Yang, and
+     Ying Tai. Motionsight: Boosting fine-grained motion understanding in multimodal LLMs. In ICLR, 2026.
+     3
+
+[15] Ziyang Fan, Keyu Chen, Ruilong Xing, Yulin Li, Li Jiang, and Zhuotao Tian. Flashvid: Efficient video
+     large language models via training-free tree-based spatiotemporal token merging. In ICLR, 2026. 9, 17,
+     49
+
+
+                                                     10
+
