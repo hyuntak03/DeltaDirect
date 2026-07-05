@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Which Way Did It Move? — Diagnosing Directional Motion Blindness in Video-LLMs</title>
 <meta name="description" content="MoDirect & DeltaDirect — diagnosing and overcoming directional motion blindness in Video-LLMs." />
-<meta property="og:title" content="Which Way Did It Move?" />
+<meta property="og:title" content="DeltaDirect — Which Way Did It Move?" />
 <meta property="og:description" content="Diagnosing and overcoming directional motion blindness in Video-LLMs." />
-<meta property="og:image" content="./static/images/teaser.png" />
+<meta property="og:image" content="./static/images/og-card.png" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="DeltaDirect — Which Way Did It Move?" />
+<meta name="twitter:description" content="Diagnosing and overcoming directional motion blindness in Video-LLMs." />
+<meta name="twitter:image" content="./static/images/og-card.png" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,7 +64,7 @@
     </h1>
 
     <div class="authors">
-      <span class="author">Jongseo Lee<sup>1</sup></span>
+      <span class="author"><a class="author-link" href="https://jong980812.github.io/" target="_blank" rel="noopener">Jongseo Lee</a><sup>1</sup></span>
       <span class="author">Hyuntak Lee<sup>1</sup></span>
       <span class="author">Sunghun Kim<sup>1</sup></span>
       <span class="author">Sooa Kim<sup>1</sup></span>
@@ -556,6 +561,16 @@
         <button class="bar-tab active" data-domain="Syn">MoDirect-SynBench Avg</button>
         <button class="bar-tab"        data-domain="Real">MoDirect-RealBench Avg</button>
       </div>
+
+      <div class="bars-legend">
+        <span class="leg-item"><span class="leg-sw chance"></span> chance</span>
+        <span class="leg-item"><span class="leg-sw baseline"></span> open-source baseline</span>
+        <span class="leg-item"><span class="leg-sw closed"></span> closed-source frontier</span>
+        <span class="leg-item"><span class="leg-sw related"></span> related method</span>
+        <span class="leg-item"><span class="leg-sw tuned"></span> + MoDirect-Inst tuning</span>
+        <span class="leg-item"><span class="leg-sw ours"></span> + DeltaDirect (ours)</span>
+      </div>
+
       <div class="bars" id="bars" aria-live="polite"></div>
     </div>
   </div>
