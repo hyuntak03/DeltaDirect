@@ -107,6 +107,7 @@ em {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+.brand-icon { display: block; flex: none; width: 30px; height: 30px; }
 .brand-stack {
   display: inline-flex;
   flex-direction: column;
@@ -135,6 +136,18 @@ em {
 }
 .nav-links a:hover { color: var(--text); background: var(--bg-soft); }
 .nav-links a.active { color: var(--primary); font-weight: 600; }
+.nav-links a.nav-cta {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-left: 6px;
+  padding: 7px 14px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--primary);
+  border-radius: 999px;
+}
+.nav-links a.nav-cta:hover { color: #fff; background: var(--primary-2); }
+.nav-links a.nav-cta i { font-size: 0.72em; }
 
 @media (max-width: 800px) {
   .nav-links { gap: 0; overflow-x: auto; max-width: 60%; }

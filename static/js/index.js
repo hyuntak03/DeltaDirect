@@ -28,7 +28,7 @@ function initScrollProgress() {
 
 /* ---------- Active section in nav ---------- */
 function initActiveNav() {
-  const links = Array.from(document.querySelectorAll('.nav-links a'));
+  const links = Array.from(document.querySelectorAll('.nav-links a[href^="#"]'));
   const sections = links
     .map(a => document.querySelector(a.getAttribute('href')))
     .filter(Boolean);
@@ -242,23 +242,29 @@ function initBars() {
   // Every row of Table 1. (syn, real) = (MoDirect-SynBench Avg, MoDirect-RealBench Avg).
   // kind drives the row color: chance / closed / baseline / related / tuned / ours.
   const models = [
-    { name: 'Random chance',                              syn: 25.0, real: 40.0, kind: 'chance' },
+    { name: 'Random chance',                              syn: 25.0, real: 39.7, kind: 'chance' },
     { name: 'GPT-4o',                                     syn: 43.3, real: 45.9, kind: 'closed' },
-    { name: 'Gemini 2.5 Flash',                           syn: 53.5, real: 38.3, kind: 'closed' },
+    { name: 'Gemini 2.5 Flash',                           syn: 53.5, real: 53.6, kind: 'closed' },
     { name: 'Video-LLaVA-7B',                             syn: 27.2, real: 37.8 },
-    { name: 'VideoChat2-HD-7B',                           syn: 24.6, real: 41.4 },
     { name: 'LLaMA-VID-7B',                               syn: 25.2, real: 40.8 },
-    { name: 'LLaVA-NeXT-Video-7B',                        syn: 25.2, real: 41.4 },
     { name: 'LLaVA-OneVision-7B',                         syn: 27.7, real: 43.1 },
     { name: 'Qwen2.5-VL-7B',                              syn: 34.7, real: 40.7 },
+    { name: 'Qwen2.5-VL-72B',                             syn: 57.3, real: 54.3 },
     { name: 'Qwen3-VL-4B',                                syn: 49.7, real: 52.7 },
     { name: 'InternVL-2.5-4B',                            syn: 31.4, real: 47.6 },
     { name: 'VideoLLaMA3-7B',                             syn: 50.3, real: 42.9 },
     { name: 'LLaVA-Video-7B',                             syn: 25.9, real: 43.1 },
+    { name: 'LLaVA-Video-72B',                            syn: 30.6, real: 44.5 },
     { name: 'LLaVA-Video-7B w/ FlashVID',                 syn: 24.9, real: 41.5, kind: 'related' },
-    { name: 'LLaVA-Video-7B w/ MoDirect-Inst',            syn: 78.9, real: 58.1, kind: 'tuned' },
-    { name: 'LLaVA-Video-7B w/ DeltaDirect',              syn: 85.4, real: 65.0, kind: 'ours' },
+    { name: 'Video-LaVIT-7B',                             syn: 22.3, real: 32.6, kind: 'related' },
+    { name: 'ReMoRa-7B',                                  syn: 25.0, real: 42.2, kind: 'related' },
+    { name: 'Motion-o-7B',                                syn: 37.7, real: 49.3, kind: 'related' },
+    { name: 'MotionLLM-7B',                               syn: 24.4, real: 40.5, kind: 'related' },
+    { name: 'MotionSight-7B',                             syn: 35.8, real: 48.8, kind: 'related' },
+    { name: 'LLaVA-Video-7B w/ MoDirect-Inst',            syn: 79.3, real: 58.6, kind: 'tuned' },
+    { name: 'LLaVA-Video-7B w/ DeltaDirect',              syn: 85.9, real: 64.5, kind: 'ours' },
   ];
+
 
   function render(domain) {
     const key = domain === 'Syn' ? 'syn' : 'real';

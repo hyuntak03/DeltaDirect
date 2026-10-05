@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Which Way Did It Move? — Scroll Walkthrough</title>
+<meta name="description" content="Scroll through the paper: how Video-LLMs miss motion direction, where the signal gets lost, and how DeltaDirect fixes it." />
+<meta property="og:title" content="DeltaDirect — Which Way Did It Move?" />
+<meta property="og:description" content="Diagnosing and overcoming directional motion blindness in Video-LLMs." />
+<meta property="og:image" content="./static/images/og-card.png" />
+<meta property="og:type" content="article" />
+
+<link rel="icon" type="image/svg+xml" href="./static/images/mark.svg">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500;1,6..72,600;1,6..72,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<link rel="stylesheet" href="./static/css/index.css">
+<link rel="stylesheet" href="./static/css/v2.css">
+</head>
+
+<body class="v2">
+
+<div class="scroll-progress" id="scrollProgress"></div>
+
+<!-- ================ NAV ================ -->
+<nav class="nav" id="nav">
+  <div class="nav-inner container">
+    <a href="#top" class="brand">
+      <svg class="brand-icon" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brandTrail" x1="4" x2="20" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#e9a514" stop-opacity="0"/>
+            <stop offset="1" stop-color="#e9a514"/>
+          </linearGradient>
+        </defs>
+        <rect x="0.75" y="0.75" width="30.5" height="30.5" rx="7.5" fill="#f6f7fa" stroke="#cdd2de" stroke-width="1.5"/>
+        <path d="M5 16H19" stroke="url(#brandTrail)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <circle cx="21" cy="16" r="5.25" fill="#f5b82e" stroke="#d99a12" stroke-width="1.25"/>
+      </svg>
+      <span class="brand-stack">
+        <span class="brand-text">DeltaDirect</span>
+        <span class="brand-lab">KHU&nbsp;VLL · MoDirect</span>
+      </span>
+    </a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#problem">Problem</a></li>
+      <li><a href="#benchmark">Benchmark</a></li>
+      <li><a href="#diagnosis">Diagnosis</a></li>
+      <li><a href="#finetune">Fine-tuning</a></li>
+      <li><a href="#analysis">Analysis</a></li>
+      <li><a href="#method">DeltaDirect</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#cite">Citation</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ================ HERO ================ -->
+<header id="top" class="hero v2-hero">
+  <div class="container">
+    <div class="hero-meta">
+      <a class="lab-chip" href="https://github.com/KHU-VLL" target="_blank" rel="noopener">
+        <span class="lab-dot"></span>
+        KHU&nbsp;VLL · Visual Language Lab
+      </a>
+      <span class="hero-eyebrow">NeurIPS 2026</span>
+    </div>
+
+    <h1 class="hero-title">
+      Which Way Did It Move?<br/>
+      <span class="title-sub">Diagnosing and Overcoming Directional Motion Blindness in Video-LLMs</span>
+    </h1>
+
+    <div class="authors">
+      <span class="author"><a class="author-link" href="https://jong980812.github.io/" target="_blank" rel="noopener">Jongseo Lee</a><sup>1,*</sup></span>
+      <span class="author"><a class="author-link" style="font-weight: 400;" href="https://hyuntak03.github.io/" target="_blank" rel="noopener">Hyuntak Lee</a><sup>1,*</sup></span>
+      <span class="author">Sunghun Kim<sup>1</sup></span>
+      <span class="author">Sooa Kim<sup>1</sup></span>
+      <span class="author">Jihoon Chung<sup>2</sup></span>
+      <span class="author">Jinwoo Choi<sup>1,</sup><sup>†</sup></span>
+    </div>
+    <div class="affil">
+      <span><sup>1</sup>Kyung Hee University</span>
+      <span class="sep">·</span>
+      <span><sup>2</sup>Princeton University</span>
+      <span class="sep">·</span>
+      <span><sup>*</sup>Equally contributed first authors</span>
+      <span class="sep">·</span>
+      <span><sup>†</sup>Corresponding author</span>
+    </div>
+
+    <div class="hero-links">
+      <a class="link-btn" href="https://arxiv.org/abs/2605.22823" target="_blank" rel="noopener">
+        <i class="fas fa-file-lines"></i><span>arXiv</span>
+      </a>
+      <a class="link-btn" href="https://github.com/KHU-VLL/DeltaDirect" target="_blank" rel="noopener">
+        <i class="fab fa-github"></i><span>Code</span>
+      </a>
+      <a class="link-btn" href="#cite">
+        <i class="fas fa-quote-right"></i><span>Citation</span>
+      </a>
+    </div>
+
+    <a class="scroll-cue" href="#problem">
+      <span>Scroll to walk through the paper</span>
+      <i class="fas fa-arrow-down" aria-hidden="true"></i>
+    </a>
+  </div>
+</header>
+
+<main>
+
+<!-- ================ 1. PROBLEM ================ -->
+<section class="scene" id="problem">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>The problem</p>
+      <h2 class="section-title" data-a style="--i:1">One clip, two questions</h2>
+      <p class="section-desc" data-a style="--i:2">
+        A yellow ball moves to the right. We show the clip to a Video-LLM and ask about its
+        color, then about its direction.
+      </p>
+    </header>
+
+    <div class="qa-pair">
+      <div class="qa" data-play>
+        <p class="qa-q" data-a><span class="q-badge q-color">Q</span>What color is it?</p>
+        <div class="qa-flow">
+          <div class="qa-clip" data-a style="--i:1"><div class="clip" aria-hidden="true"><span class="clip-trail"></span><span class="clip-ball"></span><span class="clip-gt"></span></div></div>
+          <span class="wire" data-a="wire" style="--i:3"></span>
+          <div class="llm" data-a="pop" style="--i:4"><span class="llm-icon"><i class="fas fa-film" aria-hidden="true"></i></span><span class="llm-name">Video-LLM</span></div>
+          <span class="wire" data-a="wire" style="--i:6"></span>
+          <div class="ans ans-ok" data-a style="--i:8">
+            <span class="ans-word">Yellow</span>
+            <span class="ans-note"><i class="fas fa-check" aria-hidden="true"></i>correct</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="qa" data-play>
+        <p class="qa-q" data-a><span class="q-badge q-dir">Q</span>Which way is it moving?</p>
+        <div class="qa-flow">
+          <div class="qa-clip" data-a style="--i:1"><div class="clip" aria-hidden="true"><span class="clip-trail"></span><span class="clip-ball"></span><span class="clip-gt"></span></div></div>
+          <span class="wire" data-a="wire" style="--i:3"></span>
+          <div class="llm" data-a="pop" style="--i:4"><span class="llm-icon"><i class="fas fa-film" aria-hidden="true"></i></span><span class="llm-name">Video-LLM</span></div>
+          <span class="wire" data-a="wire" style="--i:6"></span>
+          <div class="ans ans-bad" data-a style="--i:8">
+            <span class="ans-word">Leftward<span class="strike" data-a="wire" style="--i:13"></span></span>
+            <span class="ans-note" data-a style="--i:15">ground truth: rightward</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="scene-punch" data-play><span data-a>The model names the color and gets the direction wrong.
+      We call this <b>directional motion blindness</b>.</span></p>
+  </div>
+</section>
+
+<!-- ================ 2. BENCHMARK ================ -->
+<section class="scene scene-soft" id="benchmark">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Benchmark</p>
+      <h2 class="section-title" data-a style="--i:1">Even frontier models are <span class="t-miss">near chance</span></h2>
+      <p class="section-desc" data-a style="--i:2">
+        With four possible directions, guessing scores 25%. Every model recognizes the color,
+        and none of them reliably tells the direction.
+      </p>
+    </header>
+
+    <figure class="bench" data-play>
+      <div class="bench-legend" data-a>
+        <span><i class="key key-color"></i>color</span>
+        <span><i class="key key-dir"></i>direction</span>
+        <span class="bench-chance-label">chance 25%</span>
+      </div>
+      <div class="bench-rows" role="list">
+        <div class="bench-row" role="listitem">
+          <span class="bench-name">Gemini 2.5 Flash</span>
+          <span class="bench-track">
+            <span class="vbar bar-color" style="width:95%"><span class="vbar-fill" data-a="bar" style="--i:0.0"></span></span>
+            <span class="vbar bar-dir" style="width:53.5%"><span class="vbar-fill" data-a="bar" style="--i:1.0"></span><b class="vbar-val" data-a style="--i:3.0">53.5</b></span>
+          </span>
+        </div>
+        <div class="bench-row" role="listitem">
+          <span class="bench-name">VideoLLaMA3-7B</span>
+          <span class="bench-track">
+            <span class="vbar bar-color" style="width:94%"><span class="vbar-fill" data-a="bar" style="--i:1.5"></span></span>
+            <span class="vbar bar-dir" style="width:50.3%"><span class="vbar-fill" data-a="bar" style="--i:2.5"></span><b class="vbar-val" data-a style="--i:4.5">50.3</b></span>
+          </span>
+        </div>
+        <div class="bench-row" role="listitem">
+          <span class="bench-name">Qwen3-VL-4B</span>
+          <span class="bench-track">
+            <span class="vbar bar-color" style="width:95%"><span class="vbar-fill" data-a="bar" style="--i:3.0"></span></span>
+            <span class="vbar bar-dir" style="width:49.7%"><span class="vbar-fill" data-a="bar" style="--i:4.0"></span><b class="vbar-val" data-a style="--i:6.0">49.7</b></span>
+          </span>
+        </div>
+        <div class="bench-row" role="listitem">
+          <span class="bench-name">GPT-4o</span>
+          <span class="bench-track">
+            <span class="vbar bar-color" style="width:96%"><span class="vbar-fill" data-a="bar" style="--i:4.5"></span></span>
+            <span class="vbar bar-dir" style="width:43.3%"><span class="vbar-fill" data-a="bar" style="--i:5.5"></span><b class="vbar-val" data-a style="--i:7.5">43.3</b></span>
+          </span>
+        </div>
+        <div class="bench-row" role="listitem">
+          <span class="bench-name">LLaVA-Video-7B</span>
+          <span class="bench-track">
+            <span class="vbar bar-color" style="width:93%"><span class="vbar-fill" data-a="bar" style="--i:6.0"></span></span>
+            <span class="vbar bar-dir" style="width:25.9%"><span class="vbar-fill" data-a="bar" style="--i:7.0"></span><b class="vbar-val" data-a style="--i:9.0">25.9</b></span>
+          </span>
+        </div>
+      </div>
+      <div class="bench-axis" aria-hidden="true">
+        <span></span>
+        <span class="axis-ticks"><i style="left:0">0</i><i style="left:25%">25</i><i style="left:50%">50</i><i style="left:75%">75</i><i style="left:100%">100</i></span>
+      </div>
+      <figcaption>
+        Direction accuracy is the MoDirect-SynBench average, in percent. Color bars are visual
+        approximations from the paper's teaser.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================ 3. DIAGNOSIS ================ -->
+<section class="scene" id="diagnosis">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Diagnosis</p>
+      <h2 class="section-title" data-a style="--i:1">They <span class="t-see">see</span> it. They just <span class="t-miss">don't say</span> it.</h2>
+      <p class="section-desc" data-a style="--i:2">
+        Is the direction lost somewhere inside the model? We follow the signal down the pipeline
+        and test every stage with a linear probe.
+      </p>
+    </header>
+
+    <div class="vpipe">
+      <div class="vp-legend">
+        <span><i class="key key-see"></i>decodable by a linear probe</span>
+        <span><i class="key key-dir"></i>QA accuracy</span>
+      </div>
+
+        <div class="vp-row" data-flow>
+          <div class="vp-node vp-in"><div class="clip" aria-hidden="true"><span class="clip-trail"></span><span class="clip-ball"></span><span class="clip-gt"></span></div></div>
+          <div class="vp-text" data-s="fade" style="--a:0.2; --w:0.5"><b>Input clip</b><span>An object moves to the right. The question is simply which way it moved.</span></div>
+        </div>
+        <div class="vp-wire" data-flow="0.9,0.22"><span></span></div>
+        <div class="vp-row" data-flow>
+          <div class="vp-node" data-s="lit" style="--a:0; --w:0.45">
+            <h3>Vision encoder</h3>
+            <p class="vp-val" data-s="pop" style="--a:0.4; --w:0.45">99.8%</p>
+          </div>
+          <div class="vp-text" data-s="fade" style="--a:0.25; --w:0.5"><b>The encoder sees it</b><span>A linear probe reads the motion direction straight from the encoder features.</span></div>
+        </div>
+        <div class="vp-wire" data-flow="0.9,0.22"><span></span></div>
+        <div class="vp-row" data-flow>
+          <div class="vp-node" data-s="lit" style="--a:0; --w:0.45">
+            <h3>Projector</h3>
+            <p class="vp-val" data-s="pop" style="--a:0.4; --w:0.45">96.5%</p>
+          </div>
+          <div class="vp-text" data-s="fade" style="--a:0.25; --w:0.5"><b>The projector keeps it</b><span>Mapping visual features into the language space does not erase the direction.</span></div>
+        </div>
+        <div class="vp-wire" data-flow="0.9,0.22"><span></span></div>
+        <div class="vp-row" data-flow>
+          <div class="vp-node" data-s="lit" style="--a:0; --w:0.45">
+            <h3>LLM · visual tokens</h3>
+            <p class="vp-val" data-s="pop" style="--a:0.4; --w:0.45">98.1%</p>
+          </div>
+          <div class="vp-text" data-s="fade" style="--a:0.25; --w:0.5"><b>It enters the language model</b><span>Inside the LLM, the visual tokens still carry the direction.</span></div>
+        </div>
+        <div class="vp-wire" data-flow="0.9,0.22"><span></span></div>
+        <div class="vp-row" data-flow>
+          <div class="vp-node" data-s="lit" style="--a:0; --w:0.45">
+            <h3>LLM · readout token</h3>
+            <p class="vp-val" data-s="pop" style="--a:0.4; --w:0.45">95.3%</p>
+          </div>
+          <div class="vp-text" data-s="fade" style="--a:0.25; --w:0.5"><b>It reaches the readout</b><span>Even the last state before the answer encodes which way the object moved.</span></div>
+        </div>
+        <div class="vp-wire vp-wire-gap" data-flow="0.9,0.3"><span></span><em data-s="fade" style="--a:0.5; --w:0.5">direction binding gap</em></div>
+        <div class="vp-row" data-flow>
+          <div class="vp-node vp-miss" data-s="lit" style="--a:0; --w:0.45">
+            <h3>Answer</h3>
+            <p class="vp-val" data-s="pop" style="--a:0.4; --w:0.45">27.6%</p>
+          </div>
+          <div class="vp-text" data-s="fade" style="--a:0.25; --w:0.5"><b>But the model does not say it</b><span>QA accuracy sits barely above the 25% chance level. The signal is there, and it is never bound to the right answer option.</span></div>
+        </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================ 4. FINE-TUNING ================ -->
+<section class="scene scene-soft" id="finetune">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Just fine-tune it?</p>
+      <h2 class="section-title" data-a style="--i:1"><span class="t-see">Works on simple scenes.</span> <span class="t-miss">Fades on real ones.</span></h2>
+      <p class="section-desc" data-a style="--i:2">
+        Instruction tuning on synthetic direction questions closes the gap where it was trained.
+        As the scene gets visually richer, the direction signal weakens and accuracy falls.
+      </p>
+    </header>
+
+    <div class="doms-wrap" data-play>
+      <p class="doms-axis" data-a><span>simple</span><span class="doms-axis-line"></span><span>visually complex</span></p>
+      <div class="doms">
+        <figure class="dom is-good" data-a style="--i:0">
+          <div class="dom-media">
+            <video src="./static/videos/domains/P-Syn.mp4" autoplay loop muted playsinline aria-label="Primitive-on-Syn example clip"></video>
+            <span class="dom-tag">tuned here</span>
+          </div>
+          <figcaption>
+            <span class="dom-name">Primitive-on-Syn</span>
+            <span class="meter"><span class="meter-fill" data-a="bar" style="width:99.7%; --i:2"></span></span>
+            <span class="dom-val"><span data-count="99.7" data-from="25">99.7</span>%</span>
+          </figcaption>
+        </figure>
+        <figure class="dom is-mid" data-a style="--i:1.5">
+          <div class="dom-media">
+            <video src="./static/videos/domains/C-Syn.mp4" autoplay loop muted playsinline aria-label="Cutout-on-Syn example clip"></video>
+            
+          </div>
+          <figcaption>
+            <span class="dom-name">Cutout-on-Syn</span>
+            <span class="meter"><span class="meter-fill" data-a="bar" style="width:81.1%; --i:3.5"></span></span>
+            <span class="dom-val"><span data-count="81.1" data-from="25">81.1</span>%</span>
+          </figcaption>
+        </figure>
+        <figure class="dom is-mid" data-a style="--i:3">
+          <div class="dom-media">
+            <video src="./static/videos/domains/P-Real.mp4" autoplay loop muted playsinline aria-label="Primitive-on-Real example clip"></video>
+            
+          </div>
+          <figcaption>
+            <span class="dom-name">Primitive-on-Real</span>
+            <span class="meter"><span class="meter-fill" data-a="bar" style="width:75.3%; --i:5"></span></span>
+            <span class="dom-val"><span data-count="75.3" data-from="25">75.3</span>%</span>
+          </figcaption>
+        </figure>
+        <figure class="dom is-bad" data-a style="--i:4.5">
+          <div class="dom-media">
+            <video src="./static/videos/domains/C-Real.mp4" autoplay loop muted playsinline aria-label="Cutout-on-Real example clip"></video>
+            
+          </div>
+          <figcaption>
+            <span class="dom-name">Cutout-on-Real</span>
+            <span class="meter"><span class="meter-fill" data-a="bar" style="width:61.0%; --i:6.5"></span></span>
+            <span class="dom-val"><span data-count="61.0" data-from="25">61.0</span>%</span>
+          </figcaption>
+        </figure>
+      </div>
+      <p class="doms-note" data-a style="--i:8">Direction accuracy of LLaVA-Video-7B after instruction tuning on MoDirect-Inst.</p>
+    </div>
+
+    <p class="scene-punch" data-play><span data-a>The model learned to answer. So why does the answer fade on harder scenes?</span></p>
+  </div>
+</section>
+
+<!-- ================ 5. ANALYSIS ================ -->
+<section class="scene" id="analysis">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Why does it fade?</p>
+      <h2 class="section-title" data-a style="--i:1">Shared orientation, <span class="t-miss">not enough magnitude</span></h2>
+      <p class="section-desc" data-a style="--i:2">
+        At the readout we extract a <b>direction concept vector</b> for each domain: the internal
+        signal that says which way the object moved. Then we compare the four domains.
+      </p>
+    </header>
+
+    <div class="steps">
+      <article class="step" data-flow="0.8,0.5">
+        <div class="step-text">
+          <p class="step-k">Step 1</p>
+          <h3><span class="t-primary">Instruction tuning</span> aligns the orientation</h3>
+          <p>We tune on Primitive-on-Syn only. Afterwards the concept vectors of all four domains
+            point the same way, with late-layer cosine similarity above 0.9. Without tuning,
+            cross-domain similarity is much lower.</p>
+        </div>
+        <figure class="step-fig ori">
+          <div class="ori-plot">
+            <span class="ori-tag">Before tuning</span>
+            <svg class="ori-svg" viewBox="0 0 200 200" aria-hidden="true">
+              <circle cx="100" cy="100" r="78" class="ori-ring"/>
+              <g class="ori-arrow cv-d1" style="--to:-158deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d2" style="--to:-64deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d3" style="--to:22deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d4" style="--to:118deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <circle cx="100" cy="100" r="3.5" class="ori-origin"/>
+            </svg>
+            <span class="ori-note">low cross-domain similarity</span>
+          </div>
+          <div class="ori-mid" aria-hidden="true"><span>instruction tuning</span><i class="fas fa-arrow-right"></i></div>
+          <div class="ori-plot is-after">
+            <span class="ori-tag is-on">After instruction tuning</span>
+            <svg class="ori-svg is-moving" viewBox="0 0 200 200" aria-hidden="true">
+              <circle cx="100" cy="100" r="78" class="ori-ring"/>
+              <g class="ori-arrow cv-d1" style="--from:-158deg; --to:-46deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d2" style="--from:-64deg; --to:-40deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d3" style="--from:22deg; --to:-34deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <g class="ori-arrow cv-d4" style="--from:118deg; --to:-28deg"><path d="M100 100h70"/><path d="M162 94l9 6-9 6"/></g>
+              <circle cx="100" cy="100" r="3.5" class="ori-origin"/>
+            </svg>
+            <span class="ori-note is-on" data-s="fade" style="--a:0.7; --w:0.3">cosine similarity &gt; 0.9</span>
+          </div>
+          <ul class="ori-legend">
+            <li class="cv-d1"><i class="cv-dot"></i>Primitive-on-Syn</li>
+            <li class="cv-d2"><i class="cv-dot"></i>Cutout-on-Syn</li>
+            <li class="cv-d3"><i class="cv-dot"></i>Primitive-on-Real</li>
+            <li class="cv-d4"><i class="cv-dot"></i>Cutout-on-Real</li>
+          </ul>
+        </figure>
+      </article>
+
+      <article class="step" data-flow="0.8,0.5">
+        <div class="step-text">
+          <p class="step-k">Step 2</p>
+          <h3>Same orientation, <span class="t-miss">weaker magnitude</span></h3>
+          <p>Along that shared orientation, the vector gets shorter as the scene gets visually
+            richer. Accuracy falls with it.</p>
+        </div>
+        <figure class="step-fig mg">
+          <div class="mg-row mg-headrow" aria-hidden="true"><span></span><span>magnitude of the concept vector</span><span class="mg-head-acc">QA accuracy</span></div>
+          <div class="mg-rows" role="list">
+            <div class="mg-row cv-d1" role="listitem" style="--len:100%">
+              <span class="mg-name"><i class="cv-dot"></i>Primitive-on-Syn</span>
+              <span class="mg-track"><span class="mg-shaft" data-s="grow" style="--a:0.05; --w:0.5"></span></span>
+              <span class="mg-acc" data-s="fade" style="--a:0.45; --w:0.3"><b>99.5%</b></span>
+            </div>
+            <div class="mg-row cv-d2" role="listitem" style="--len:74%">
+              <span class="mg-name"><i class="cv-dot"></i>Cutout-on-Syn</span>
+              <span class="mg-track"><span class="mg-shaft" data-s="grow" style="--a:0.13; --w:0.5"></span></span>
+              <span class="mg-acc" data-s="fade" style="--a:0.53; --w:0.3"><b>80.7%</b></span>
+            </div>
+            <div class="mg-row cv-d3" role="listitem" style="--len:60%">
+              <span class="mg-name"><i class="cv-dot"></i>Primitive-on-Real</span>
+              <span class="mg-track"><span class="mg-shaft" data-s="grow" style="--a:0.21000000000000002; --w:0.5"></span></span>
+              <span class="mg-acc" data-s="fade" style="--a:0.61; --w:0.3"><b>74.7%</b></span>
+            </div>
+            <div class="mg-row cv-d4" role="listitem" style="--len:40%">
+              <span class="mg-name"><i class="cv-dot"></i>Cutout-on-Real</span>
+              <span class="mg-track"><span class="mg-shaft" data-s="grow" style="--a:0.29; --w:0.5"></span></span>
+              <span class="mg-acc" data-s="fade" style="--a:0.69; --w:0.3"><b>60.5%</b></span>
+            </div>
+          </div>
+        </figure>
+      </article>
+
+      <article class="step" data-flow="0.8,0.5">
+        <div class="step-text">
+          <p class="step-k">Step 3</p>
+          <h3><span class="t-see">Restore the magnitude</span>, and the binding gap narrows</h3>
+          <p>We stretch each vector back to the Primitive-on-Syn magnitude. Orientation is
+            untouched and nothing is retrained, yet the model binds the signal to the right
+            answer far more often.</p>
+        </div>
+        <figure class="step-fig mg">
+          <div class="mg-row mg-headrow" aria-hidden="true"><span></span><span class="mg-guide-label">Primitive-on-Syn magnitude</span><span class="mg-head-acc">QA accuracy</span></div>
+          <div class="mg-rows" role="list">
+            <div class="mg-row cv-d1 is-source" role="listitem" style="--len:100%">
+              <span class="mg-name"><i class="cv-dot"></i>Primitive-on-Syn</span>
+              <span class="mg-track has-guide"><span class="mg-shaft"></span></span>
+              <span class="mg-acc"><b>99.5%</b></span>
+            </div>
+            <div class="mg-row cv-d2" role="listitem" style="--len:74%">
+              <span class="mg-name"><i class="cv-dot"></i>Cutout-on-Syn</span>
+              <span class="mg-track has-guide"><span class="mg-fix" data-s="restore" style="--a:0.15; --w:0.6"></span><span class="mg-shaft is-old"></span></span>
+              <span class="mg-acc is-fixed"><b><span data-count="89.6" data-from="80.7" data-p0="0.15" data-p1="0.75">89.6</span>%</b><em class="mg-delta" data-s="pop" style="--a:0.75; --w:0.2">+8.9</em></span>
+            </div>
+            <div class="mg-row cv-d3" role="listitem" style="--len:60%">
+              <span class="mg-name"><i class="cv-dot"></i>Primitive-on-Real</span>
+              <span class="mg-track has-guide"><span class="mg-fix" data-s="restore" style="--a:0.15; --w:0.6"></span><span class="mg-shaft is-old"></span></span>
+              <span class="mg-acc is-fixed"><b><span data-count="85.9" data-from="74.7" data-p0="0.15" data-p1="0.75">85.9</span>%</b><em class="mg-delta" data-s="pop" style="--a:0.75; --w:0.2">+11.2</em></span>
+            </div>
+            <div class="mg-row cv-d4" role="listitem" style="--len:40%">
+              <span class="mg-name"><i class="cv-dot"></i>Cutout-on-Real</span>
+              <span class="mg-track has-guide"><span class="mg-fix" data-s="restore" style="--a:0.15; --w:0.6"></span><span class="mg-shaft is-old"></span></span>
+              <span class="mg-acc is-fixed"><b><span data-count="76.0" data-from="60.5" data-p0="0.15" data-p1="0.75">76.0</span>%</b><em class="mg-delta" data-s="pop" style="--a:0.75; --w:0.2">+15.5</em></span>
+            </div>
+          </div>
+        </figure>
+      </article>
+    </div>
+
+    <p class="steps-note">Vector directions and lengths are illustrative. Accuracies are from the paper's
+      magnitude intervention on the instruction-tuned LLaVA-Video-7B.</p>
+
+    <p class="scene-punch" data-play><span data-a>The failure is a <b class="t-miss">magnitude deficit</b>, not missing geometry.
+      We need a stronger direction signal, <b class="t-primary">before it enters the LLM</b>.</span></p>
+  </div>
+</section>
+
+<!-- ================ 6. DELTADIRECT ================ -->
+<section class="scene scene-soft" id="method">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Method</p>
+      <h2 class="section-title" data-a style="--i:1"><span class="t-primary">DeltaDirect:</span> teach the projector to carry motion</h2>
+      <p class="section-desc" data-a style="--i:2">
+        To strengthen the signal at its source, we subtract the projector features of two
+        adjacent frames. A lightweight motion head has to predict the 2-D motion vector from
+        that difference, so the features themselves must carry direction.
+      </p>
+    </header>
+
+    <figure class="dd" data-play>
+      <div class="dd-main">
+        <div class="dd-in" data-a>
+          <video src="./static/videos/domains/C-Real.mp4" autoplay loop muted playsinline aria-label="Real scene clip"></video>
+          <span class="pipe-cap">real scene</span>
+        </div>
+        <span class="wire" data-a="wire" style="--i:1"></span>
+        <div class="stage" data-a style="--i:2"><h3>Vision encoder</h3></div>
+        <span class="wire" data-a="wire" style="--i:3"></span>
+        <div class="stage stage-hl" data-a style="--i:4"><h3>Projector</h3></div>
+        <span class="wire" data-a="wire" style="--i:5"></span>
+        <div class="stage" data-a style="--i:6"><h3>LLM</h3></div>
+        <span class="dd-stem" data-a="wire-y" style="--i:7"></span>
+      </div>
+
+      <div class="dd-branch" data-a style="--i:8">
+        <span class="dd-tag">training only · removed at inference</span>
+        <div class="dd-eq">
+          <span class="dd-term" data-a style="--i:10"><span class="tile"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="dd-sym"><i>F</i><sub>t+1</sub></span></span>
+          <span class="dd-op" data-a style="--i:11">−</span>
+          <span class="dd-term" data-a style="--i:12"><span class="tile"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="dd-sym"><i>F</i><sub>t</sub></span></span>
+          <span class="dd-op" data-a style="--i:13">=</span>
+          <span class="dd-term" data-a style="--i:14"><span class="tile"><i></i><i></i><i></i><i></i><i></i><i class="neg"></i><i class="pos"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="dd-sym">Δ<i>F</i></span></span>
+          <span class="dd-arrow dd-arrow-first" data-a="wire" style="--i:16"></span>
+          <span class="dd-head" data-a="pop" style="--i:17"><b>Motion head</b><small>lightweight</small></span>
+          <span class="dd-arrow" data-a="wire" style="--i:19"></span>
+          <span class="dd-term dd-out" data-a style="--i:20">
+            <svg class="compass" viewBox="0 0 72 72" width="72" height="72" role="img" aria-label="Predicted motion vector aligning with the true motion">
+              <circle cx="36" cy="36" r="32" class="compass-ring"/>
+              <path d="M36 8v56M8 36h56" class="compass-cross"/>
+              <path d="M36 36h22" class="compass-true"/>
+              <g class="compass-pred"><path d="M36 36h21"/><path d="M51 30l7 6-7 6"/></g>
+            </svg>
+            <span class="dd-sym">predicted motion</span>
+          </span>
+        </div>
+      </div>
+
+      <figcaption data-a style="--i:22">
+        The target is the object's known 2-D motion in the synthetic clip. The motion branch is
+        discarded after training.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================ 7. RESULTS ================ -->
+<section class="scene" id="results">
+  <div class="container">
+    <header class="scene-head" data-play>
+      <p class="scene-eyebrow" data-a>Result</p>
+      <h2 class="section-title" data-a style="--i:1">Training-only. <span class="t-primary">Zero cost at inference.</span></h2>
+      <p class="section-desc" data-a style="--i:2">
+        The model runs exactly as before, with the same inputs and the same tokens. Direction
+        accuracy rises on synthetic clips, and <b>on real-world videos it never trained on</b>.
+      </p>
+    </header>
+
+    <div class="bench-legend res-legend" data-play>
+      <span data-a><i class="key key-base"></i>vanilla LLaVA-Video-7B</span>
+      <span data-a style="--i:1"><i class="key key-inst"></i>+ MoDirect-Inst tuning</span>
+      <span data-a style="--i:2"><i class="key key-dd"></i>+ DeltaDirect</span>
+    </div>
+
+    <div class="res-pair">
+      <div class="res-col">
+        <div class="jump" data-play>
+          <p class="jump-label" data-a>MoDirect-SynBench</p>
+          <p class="jump-figure" data-a style="--i:1">
+            <span class="from">25.9%</span>
+            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            <span class="to"><span data-count="85.9" data-from="25.9">85.9</span>%</span>
+          </p>
+        </div>
+        <figure class="cmp" data-play>
+          <div class="cmp-rows" role="list">
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">Primitive-on-Syn</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:27.6%"><span class="vbar-fill" data-a="bar" style="--i:0"></span><b class="vbar-val" data-a style="--i:2">27.6</b></span>
+                <span class="vbar bar-inst" style="width:99.7%"><span class="vbar-fill" data-a="bar" style="--i:1"></span><b class="vbar-val" data-a style="--i:3">99.7</b></span>
+                <span class="vbar bar-dd" style="width:99.6%"><span class="vbar-fill" data-a="bar" style="--i:2"></span><b class="vbar-val" data-a style="--i:4">99.6</b></span>
+              </span>
+            </div>
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">Cutout-on-Syn</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:23.4%"><span class="vbar-fill" data-a="bar" style="--i:1.5"></span><b class="vbar-val" data-a style="--i:3.5">23.4</b></span>
+                <span class="vbar bar-inst" style="width:81.1%"><span class="vbar-fill" data-a="bar" style="--i:2.5"></span><b class="vbar-val" data-a style="--i:4.5">81.1</b></span>
+                <span class="vbar bar-dd" style="width:85.5%"><span class="vbar-fill" data-a="bar" style="--i:3.5"></span><b class="vbar-val" data-a style="--i:5.5">85.5</b></span>
+              </span>
+            </div>
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">Primitive-on-Real</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:26.9%"><span class="vbar-fill" data-a="bar" style="--i:3"></span><b class="vbar-val" data-a style="--i:5">26.9</b></span>
+                <span class="vbar bar-inst" style="width:75.3%"><span class="vbar-fill" data-a="bar" style="--i:4"></span><b class="vbar-val" data-a style="--i:6">75.3</b></span>
+                <span class="vbar bar-dd" style="width:86.1%"><span class="vbar-fill" data-a="bar" style="--i:5"></span><b class="vbar-val" data-a style="--i:7">86.1</b></span>
+              </span>
+            </div>
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">Cutout-on-Real</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:25.8%"><span class="vbar-fill" data-a="bar" style="--i:4.5"></span><b class="vbar-val" data-a style="--i:6.5">25.8</b></span>
+                <span class="vbar bar-inst" style="width:61.0%"><span class="vbar-fill" data-a="bar" style="--i:5.5"></span><b class="vbar-val" data-a style="--i:7.5">61.0</b></span>
+                <span class="vbar bar-dd" style="width:72.5%"><span class="vbar-fill" data-a="bar" style="--i:6.5"></span><b class="vbar-val" data-a style="--i:8.5">72.5</b></span>
+              </span>
+            </div>
+            <div class="cmp-row is-avg" role="listitem">
+              <span class="cmp-name">Average</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:25.9%"><span class="vbar-fill" data-a="bar" style="--i:6"></span><b class="vbar-val" data-a style="--i:8">25.9</b></span>
+                <span class="vbar bar-inst" style="width:79.3%"><span class="vbar-fill" data-a="bar" style="--i:7"></span><b class="vbar-val" data-a style="--i:9">79.3</b></span>
+                <span class="vbar bar-dd" style="width:85.9%"><span class="vbar-fill" data-a="bar" style="--i:8"></span><b class="vbar-val" data-a style="--i:10">85.9</b></span>
+              </span>
+            </div>
+          </div>
+          <figcaption>Average over the four synthetic domains, in percent.</figcaption>
+        </figure>
+      </div>
+      <div class="res-col">
+        <div class="jump" data-play>
+          <p class="jump-label" data-a>MoDirect-RealBench</p>
+          <p class="jump-figure" data-a style="--i:1">
+            <span class="from">43.1%</span>
+            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            <span class="to"><span data-count="64.5" data-from="43.1">64.5</span>%</span>
+          </p>
+        </div>
+        <figure class="cmp" data-play>
+          <div class="cmp-rows" role="list">
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">SSv2</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:52.2%"><span class="vbar-fill" data-a="bar" style="--i:0"></span><b class="vbar-val" data-a style="--i:2">52.2</b></span>
+                <span class="vbar bar-inst" style="width:72.0%"><span class="vbar-fill" data-a="bar" style="--i:1"></span><b class="vbar-val" data-a style="--i:3">72.0</b></span>
+                <span class="vbar bar-dd" style="width:80.7%"><span class="vbar-fill" data-a="bar" style="--i:2"></span><b class="vbar-val" data-a style="--i:4">80.7</b></span>
+              </span>
+            </div>
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">KTH</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:50.3%"><span class="vbar-fill" data-a="bar" style="--i:1.5"></span><b class="vbar-val" data-a style="--i:3.5">50.3</b></span>
+                <span class="vbar bar-inst" style="width:67.9%"><span class="vbar-fill" data-a="bar" style="--i:2.5"></span><b class="vbar-val" data-a style="--i:4.5">67.9</b></span>
+                <span class="vbar bar-dd" style="width:74.6%"><span class="vbar-fill" data-a="bar" style="--i:3.5"></span><b class="vbar-val" data-a style="--i:5.5">74.6</b></span>
+              </span>
+            </div>
+            <div class="cmp-row" role="listitem">
+              <span class="cmp-name">TOMATO</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:26.8%"><span class="vbar-fill" data-a="bar" style="--i:3"></span><b class="vbar-val" data-a style="--i:5">26.8</b></span>
+                <span class="vbar bar-inst" style="width:35.8%"><span class="vbar-fill" data-a="bar" style="--i:4"></span><b class="vbar-val" data-a style="--i:6">35.8</b></span>
+                <span class="vbar bar-dd" style="width:38.1%"><span class="vbar-fill" data-a="bar" style="--i:5"></span><b class="vbar-val" data-a style="--i:7">38.1</b></span>
+              </span>
+            </div>
+            <div class="cmp-row is-avg" role="listitem">
+              <span class="cmp-name">Average</span>
+              <span class="cmp-bars">
+                <span class="vbar bar-base" style="width:43.1%"><span class="vbar-fill" data-a="bar" style="--i:4.5"></span><b class="vbar-val" data-a style="--i:6.5">43.1</b></span>
+                <span class="vbar bar-inst" style="width:58.6%"><span class="vbar-fill" data-a="bar" style="--i:5.5"></span><b class="vbar-val" data-a style="--i:7.5">58.6</b></span>
+                <span class="vbar bar-dd" style="width:64.5%"><span class="vbar-fill" data-a="bar" style="--i:6.5"></span><b class="vbar-val" data-a style="--i:8.5">64.5</b></span>
+              </span>
+            </div>
+          </div>
+          <figcaption>Motion direction accuracy on real videos, in percent. Training used synthetic clips only.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <dl class="outcomes" data-play>
+      <div class="outcome" data-a>
+        <dt>Real-world tuning data</dt>
+        <dd class="outcome-figure"><span class="to">0</span></dd>
+        <dd class="outcome-note">Training uses synthetic motion supervision only. Real-world accuracy still rises by 21.4 points over the vanilla baseline.</dd>
+      </div>
+      <div class="outcome" data-a style="--i:1.5">
+        <dt>Hardest synthetic domain</dt>
+        <dd class="outcome-figure"><span class="from">61.0%</span><i class="fas fa-arrow-right" aria-hidden="true"></i><span class="to"><span data-count="72.5" data-from="61.0">72.5</span>%</span></dd>
+        <dd class="outcome-note">Cutout-on-Real, where instruction tuning alone faded the most.</dd>
+      </div>
+      <div class="outcome" data-a style="--i:3">
+        <dt>Added inference cost</dt>
+        <dd class="outcome-figure"><span class="to">0</span></dd>
+        <dd class="outcome-note">The motion branch is removed after training. Input format, token sequence, and model stay unchanged.</dd>
+      </div>
+    </dl>
+
+    <div class="cite-links">
+      <a class="link-btn" href="https://arxiv.org/abs/2605.22823" target="_blank" rel="noopener"><i class="fas fa-file-lines"></i><span>Paper on arXiv</span></a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ================ CITE ================ -->
+<section class="section section-soft" id="cite">
+  <div class="container narrow">
+    <h2 class="section-title">Citation</h2>
+    <p class="section-desc">If you find this work useful, please cite us.</p>
+
+    <div class="bib">
+      <button class="bib-copy" id="copyBibtex" type="button">
+        <i class="far fa-copy"></i><span>Copy</span>
+      </button>
+      <pre id="bibtex">@inproceedings{lee2026deltadirect,
+  title     = {Which Way Did It Move? Diagnosing and Overcoming
+               Directional Motion Blindness in Video-LLMs},
+  author    = {Lee, Jongseo and Lee, Hyuntak and Kim, Sunghun and
+               Kim, Sooa and Chung, Jihoon and Choi, Jinwoo},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2026}
+}</pre>
+    </div>
+
+    <div class="cite-links">
+      <a class="link-btn" href="https://arxiv.org/abs/2605.22823" target="_blank" rel="noopener">
+        <i class="fas fa-file-lines"></i><span>arXiv:2605.22823</span>
+      </a>
+      <a class="link-btn" href="https://github.com/KHU-VLL/DeltaDirect" target="_blank" rel="noopener">
+        <i class="fab fa-github"></i><span>KHU-VLL/DeltaDirect</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="container narrow">
+    <p>For questions or replication notes, please contact the corresponding author.</p>
+    <p class="tiny">© 2026 <a href="https://github.com/KHU-VLL" target="_blank" rel="noopener">KHU&nbsp;VLL</a>, Kyung Hee University. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="./static/js/v2.js"></script>
+</body>
+</html>

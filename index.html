@@ -14,6 +14,8 @@
 <meta name="twitter:description" content="Diagnosing and overcoming directional motion blindness in Video-LLMs." />
 <meta name="twitter:image" content="./static/images/og-card.png" />
 
+<link rel="icon" type="image/svg+xml" href="./static/images/mark.svg">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500;1,6..72,600;1,6..72,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -30,7 +32,17 @@
 <nav class="nav" id="nav">
   <div class="nav-inner container">
     <a href="#top" class="brand">
-      <span class="brand-mark">DD</span>
+      <svg class="brand-icon" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brandTrail" x1="4" x2="20" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#e9a514" stop-opacity="0"/>
+            <stop offset="1" stop-color="#e9a514"/>
+          </linearGradient>
+        </defs>
+        <rect x="0.75" y="0.75" width="30.5" height="30.5" rx="7.5" fill="#f6f7fa" stroke="#cdd2de" stroke-width="1.5"/>
+        <path d="M5 16H19" stroke="url(#brandTrail)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <circle cx="21" cy="16" r="5.25" fill="#f5b82e" stroke="#d99a12" stroke-width="1.25"/>
+      </svg>
       <span class="brand-stack">
         <span class="brand-text">DeltaDirect</span>
         <span class="brand-lab">KHU&nbsp;VLL · MoDirect</span>
@@ -43,6 +55,7 @@
       <li><a href="#method">Method</a></li>
       <li><a href="#results">Results</a></li>
       <li><a href="#cite">Citation</a></li>
+      <li><a class="nav-cta" href="./v2.html">Try version 2<i class="fas fa-arrow-right" aria-hidden="true"></i></a></li>
     </ul>
   </div>
 </nav>
@@ -192,7 +205,7 @@
               <span class="vdemo-name">LLaVA-Video-7B + <b>DeltaDirect</b></span>
               <span class="vdemo-bar">
                 <span class="fill-color" data-w="93"></span>
-                <span class="fill-dir strong" data-w="85.4"></span>
+                <span class="fill-dir strong" data-w="85.9"></span>
               </span>
             </div>
           </div>
@@ -223,7 +236,7 @@
       We introduce <b>MoDirect-Inst</b>, a controlled instruction-tuning corpus, and <b>DeltaDirect</b>, a
       parameter-efficient motion-change head that pulls direction through the vision-language interface
       during training and leaves the inference pipeline untouched. DeltaDirect raises LLaVA-Video-7B from
-      27.6% to <b>85.4%</b> on real-world direction QA.
+      25.9% to <b>85.9%</b> on MoDirect-SynBench.
     </p>
 
     <div class="tldr reveal">
