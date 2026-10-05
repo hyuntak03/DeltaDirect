@@ -272,6 +272,8 @@ em {
   transform: translateY(-1px);
 }
 .link-btn i { color: var(--primary); }
+.link-btn i.ai { font-size: 1.15em; }
+.link-btn .link-logo { display: block; width: 1.3em; height: auto; margin: -2px 0; }
 
 /* ===================== SECTIONS ===================== */
 .section {
